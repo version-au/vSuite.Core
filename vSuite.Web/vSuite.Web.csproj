@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <!--
+    vSuite.Web: the pages the suite's server apps (vDeploy, vPatch) share - a vSuite window in a browser. vShell's colours as CSS
+    variables (WebTheme, ThemeStore - the vShell plugins send them), the sign-in gate, tabs, the status line, the viewer's clock,
+    confirmations, and the small parts every page uses (Icon, Toggle, Seg, Row, UseBar, Crumbs, ConfirmDialog). Its script is
+    _content/vSuite.Web/vsuite.js (window.vs). Built on vSuite.Server.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>vSuite.Web</AssemblyName>
+    <RootNamespace>vSuite.Web</RootNamespace>
+    <Version>1.0.34</Version>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="..\vSuite.Server\vSuite.Server.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="vSuite.Server" />
+  </ItemGroup>
+
+</Project>

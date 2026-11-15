@@ -1,0 +1,16 @@
+@* The line above a page's title: Back (one step up - to the page this one belongs to), then where it is, each part a link:
+   Hosts › nuc01 › arrstack. Put <span class="sep">›</span> between the parts. *@
+
+<div class="crumb">
+    @if (Back != null)
+    {
+        <a class="backbtn" href="@Back" title="@(BackTitle ?? "Back")"><Icon Name="back" Size="11" /> Back</a>
+    }
+    @ChildContent
+</div>
+
+@code {
+    [Parameter] public string Back { get; set; }
+    [Parameter] public string BackTitle { get; set; }
+    [Parameter] public RenderFragment ChildContent { get; set; }
+}

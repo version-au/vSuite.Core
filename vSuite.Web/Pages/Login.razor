@@ -1,0 +1,93 @@
+@* Sign in (vSuite.Web): user name, password and the authenticator code if it's on; 5 wrong tries lock that address out for 15 minutes. *@
+@page "/login"
+@layout SuiteBareLayout
+@attribute [ExcludeFromInteractiveRouting]
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Authentication.Cookies
+@inject IWebState State
+@inject Lockout Lockout
+@inject NavigationManager Nav
+
+<PageTitle>Sign in · @ServerApp.Name</PageTitle>
+
+<h1 class="bare-title">Sign in</h1>
+@if (Out)
+{
+    <p class="dim">You're signed out.</p>
+}
+
+<EditForm Model="Input" FormName="login" OnSubmit="SignIn" class="form">
+    <label class="field">
+        <span>User name</span>
+        <InputText @bind-Value="Input.User" class="input" autocomplete="username" autofocus />
+    </label>
+    <label class="field">
+        <span>Password</span>
+        <InputText @bind-Value="Input.Password" type="password" class="input" autocomplete="current-password" />
+    </label>
+    @if (!string.IsNullOrEmpty(State.Web.TotpSecret))
+    {
+        <label class="field">
+            <span>Code from your authenticator app</span>
+            <InputText @bind-Value="Input.Code" class="input mono" inputmode="numeric" autocomplete="one-time-code" maxlength="7" />
+        </label>
+    }
+    @if (Problem != null)
+    {
+        <p class="bad-text">@Problem</p>
+    }
+    <button type="submit" class="btn pri wide">Sign in</button>
+</EditForm>
+
+@code {
+    [CascadingParameter] HttpContext HttpContext { get; set; }
+    [SupplyParameterFromForm] LoginInput Input { get; set; }
+    [SupplyParameterFromQuery(Name = "r")] string Return { get; set; }
+    [SupplyParameterFromQuery(Name = "out")] string OutFlag { get; set; }
+
+    string Problem;
+    bool Out => OutFlag == "1";
+
+    public sealed class LoginInput
+    {
+        public string User { get; set; }
+        public string Password { get; set; }
+        public string Code { get; set; }
+    }
+
+    protected override void OnInitialized() { Input ??= new LoginInput(); }
+
+    async Task SignIn()
+    {
+        var s = State.Web;
+        string who = Auth.Client(HttpContext, s)?.ToString() ?? "?";
+        var now = DateTimeOffset.Now;
+        if (Lockout.Locked(who, now))
+        {
+            Problem = "Too many wrong tries from here. Wait 15 minutes, then try again.";
+            return;
+        }
+        bool ok = string.Equals((Input.User ?? "").Trim(), s.UserName, StringComparison.OrdinalIgnoreCase) && Password.Verify(Input.Password, s.PasswordHash);
+        if (ok && !string.IsNullOrEmpty(s.TotpSecret)) ok = Totp.Check(Secrets.Unprotect(s.TotpSecret), Input.Code, now);
+        if (!ok)
+        {
+            Lockout.Failed(who, now);
+            Log.Write("Wrong sign-in from " + who);
+            Problem = string.IsNullOrEmpty(s.TotpSecret) ? "That user name and password don't match." : "That user name, password and code don't match.";
+            Input.Password = Input.Code = null;
+            return;
+        }
+        Lockout.Passed(who);
+        await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, Auth.Principal(s, trusted: false),
+            new AuthenticationProperties { IsPersistent = true, ExpiresUtc = DateTimeOffset.UtcNow.AddDays(s.StayDays), AllowRefresh = true });
+        Log.Write("Signed in from " + who);
+        Nav.NavigateTo(Local(Return), forceLoad: true);
+    }
+
+    static string Local(string r)
+    {
+        if (string.IsNullOrEmpty(r) || !r.StartsWith('/') || r.StartsWith("//") || r.StartsWith("/\\")) return "/";
+        return r;
+    }
+}

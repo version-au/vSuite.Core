@@ -1,0 +1,220 @@
+@* The vSuite window, in a browser: the caption row (the app icon and its menu, the side panel button, tabs and +, the app's own buttons,
+   Options), the side panel with a splitter, the page, and the status line - plus the theme's colours, the confirmation dialog and the
+   "something went wrong" bar. An app's MainLayout fills the slots:
+     Logo     its icon at 18 px          Menu     the app icon's menu (buttons with role="menuitem", <hr /> between groups)
+     Buttons  caption buttons before Options      Side     its side panel      ChildContent  @Body
+   Live(path) says whether a remembered tab's page is still there (a host removed); call Forget() when that may have changed. *@
+@implements IDisposable
+@inject Tabs Tabs
+@inject StatusLine Status
+@inject Clock Clock
+@inject IWebState State
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject ThemeStore Themes
+
+<HeadContent>
+    <style>@((MarkupString)Themes.Css(State.Web))</style>
+</HeadContent>
+
+<div class="app @(sideOpen ? "" : "noside")" style="--side-w:@(sideWidth)px">
+    <header class="caption">
+        <button type="button" class="capbtn appicon" title="@ServerApp.Name" aria-haspopup="menu" @onclick="() => menuOpen = !menuOpen">@Logo</button>
+        <button type="button" class="capbtn" title="Side panel (Ctrl+B)" @onclick="ToggleSide"><Icon Name="side" /></button>
+        <div class="tabstrip" id="tabstrip" role="tablist" style="--tabs:@Tabs.Items.Count">
+            @foreach (var t in Tabs.Items)
+            {
+                var tab = t;
+                bool on = tab.Key == Tabs.Active;
+                <div class="tab @(on ? "on" : "") @(dragOver == tab.Key ? "drop" : "")" role="tab" aria-selected="@(on ? "true" : "false")" title="@tab.Title"
+                     draggable="true" @onclick="() => Go(tab.Path)" @onmousedown="e => Middle(e, tab.Key)"
+                     @ondragstart="() => dragging = tab.Key" @ondragenter="() => dragOver = tab.Key" @ondragend="() => { dragging = null; dragOver = null; }"
+                     @ondragover:preventDefault="true" @ondrop="() => Drop(tab.Key)">
+                    <Icon Name="@tab.Icon" Size="14" />
+                    <span class="t">@tab.Title</span>
+                    <button type="button" class="tabx" title="Close" @onclick="() => Close(tab.Key)" @onclick:stopPropagation="true"><Icon Name="close" Size="10" /></button>
+                </div>
+            }
+        </div>
+        <button type="button" class="capbtn plus" title="@PlusTitle" @onclick="() => Go(PlusPath)"><Icon Name="add" /></button>
+        <div class="free"></div>
+        @Buttons
+        <button type="button" class="capbtn" title="Options" @onclick='() => Go("/options")'><Icon Name="settings" /></button>
+    </header>
+
+    @if (menuOpen)
+    {
+        <div class="veil" @onclick="() => menuOpen = false"></div>
+        @* any click in the menu closes it - its items do their own thing as well *@
+        <div class="menu" role="menu" style="left:6px;top:38px" @onclick="() => menuOpen = false">
+            @Menu
+            @if (Menu != null)
+            {
+                <hr />
+            }
+            <button type="button" role="menuitem" @onclick='() => Go("/logout", true)'><Icon Name="signout" /><span>Sign out</span></button>
+        </div>
+    }
+
+    <div class="body">
+        <aside class="side">@Side</aside>
+        <div class="splitter" id="splitter" title="Drag to resize"></div>
+        <main class="content" id="content">@ChildContent</main>
+    </div>
+
+    <footer class="status">
+        <span class="l">@Status.Left</span>
+        <span class="r">@Status.Right</span>
+    </footer>
+</div>
+
+<ConfirmDialog />
+
+<div id="blazor-error-ui" data-nosnippet>
+    Something went wrong on this page. <a href="." class="reload">Load it again</a>
+    <span class="dismiss">✕</span>
+</div>
+
+@code {
+    [Parameter] public RenderFragment Logo { get; set; }
+    [Parameter] public RenderFragment Menu { get; set; }
+    [Parameter] public RenderFragment Buttons { get; set; }
+    [Parameter] public RenderFragment Side { get; set; }
+    [Parameter] public RenderFragment ChildContent { get; set; }
+    /// <summary>Where + goes (the app's main list) and its tooltip.</summary>
+    [Parameter] public string PlusPath { get; set; } = "/";
+    [Parameter] public string PlusTitle { get; set; } = "New tab";
+    /// <summary>Is the page behind a remembered tab still there? (Default: always.)</summary>
+    [Parameter] public Func<string, bool> Live { get; set; }
+    /// <summary>Changes not saved: the browser asks before the tab closes.</summary>
+    [Parameter] public bool Dirty { get; set; }
+
+    bool menuOpen, sideOpen = true, restored, narrow, dirtyShown;
+    int sideWidth = 240;
+    string dragging, dragOver;
+    DotNetObjectReference<SuiteWindow> me;
+
+    bool IsLive(string path) { return Live == null || Live(path); }
+
+    protected override void OnInitialized()
+    {
+        Tabs.Changed += TabsChanged;
+        Status.Changed += Redraw;
+        State.Changed += Redraw;
+        Nav.LocationChanged += Moved;
+        Themes.Changed += Redraw;
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Dirty == dirtyShown) return;
+        dirtyShown = Dirty;
+        try { await JS.InvokeVoidAsync("vs.dirty", Dirty); } catch { }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool first)
+    {
+        if (!first) return;
+        me = DotNetObjectReference.Create(this);
+        try
+        {
+            var s = await JS.InvokeAsync<SavedLayout>("vs.start", me);
+            if (s != null)
+            {
+                if (!string.IsNullOrEmpty(s.Zone)) Clock.SetZone(s.Zone);
+                if (s.SideWidth >= 160 && s.SideWidth <= 520) sideWidth = s.SideWidth;
+                sideOpen = s.SideOpen;
+                narrow = s.Narrow;
+                if (!string.IsNullOrEmpty(s.Tabs))
+                {
+                    var saved = System.Text.Json.JsonSerializer.Deserialize<List<TabItem>>(s.Tabs);
+                    Tabs.Restore(saved.Where(t => IsLive(t.Path)));
+                }
+            }
+        }
+        catch { }
+        restored = true;
+        TabsChanged();   // saves them now (the page loaded is a tab too, even if nothing else happens before a reload)
+    }
+
+    public sealed class SavedLayout
+    {
+        public string Zone { get; set; }
+        public string Tabs { get; set; }
+        public int SideWidth { get; set; }
+        public bool SideOpen { get; set; } = true;
+        public bool Narrow { get; set; }
+    }
+
+    /// <summary>Tabs whose page has gone (Live says no) are dropped.</summary>
+    public void Forget()
+    {
+        Tabs.Forget(p => !IsLive(p));
+        InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>On a phone the side panel covers the page: going somewhere closes it.</summary>
+    void Moved(object sender, LocationChangedEventArgs e)
+    {
+        if (!narrow || !sideOpen) return;
+        sideOpen = false;
+        InvokeAsync(StateHasChanged);
+    }
+
+    void TabsChanged()
+    {
+        InvokeAsync(async () =>
+        {
+            StateHasChanged();
+            if (!restored) return;
+            try
+            {
+                await JS.InvokeVoidAsync("vs.save", "tabs", System.Text.Json.JsonSerializer.Serialize(Tabs.Items));
+                await JS.InvokeVoidAsync("vs.showTab");
+            }
+            catch { }
+        });
+    }
+
+    void Redraw() { InvokeAsync(StateHasChanged); }
+
+    void Go(string path, bool reload = false) { Nav.NavigateTo(path, forceLoad: reload); }
+
+    [JSInvokable]
+    public void ToggleSide()
+    {
+        sideOpen = !sideOpen;
+        _ = JS.InvokeVoidAsync("vs.save", "sideOpen", sideOpen ? "1" : "0");
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void SideResized(int width) { sideWidth = width; }
+
+    void Close(string key)
+    {
+        string go = Tabs.Close(key);
+        if (go != null) Nav.NavigateTo(go);
+    }
+
+    void Middle(MouseEventArgs e, string key)
+    {
+        if (e.Button == 1) Close(key);
+    }
+
+    void Drop(string onto)
+    {
+        if (dragging != null && dragging != onto) Tabs.Move(dragging, Tabs.Items.FindIndex(t => t.Key == onto));
+        dragging = dragOver = null;
+    }
+
+    public void Dispose()
+    {
+        Tabs.Changed -= TabsChanged;
+        Status.Changed -= Redraw;
+        State.Changed -= Redraw;
+        Nav.LocationChanged -= Moved;
+        Themes.Changed -= Redraw;
+        me?.Dispose();
+    }
+}

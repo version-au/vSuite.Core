@@ -1,0 +1,103 @@
+@* The confirmation for a dangerous action: type the name (with Copy, as Komodo does), your password, or both - Options > Sign-in. *@
+@implements IDisposable
+@inject Dialogs Dialogs
+@inject IWebState State
+@inject IJSRuntime JS
+
+@if (R != null)
+{
+    <div class="modal-veil" @onclick="Cancel"></div>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="confirm-title" @onkeydown="Key">
+        <h2 id="confirm-title">@R.Title</h2>
+        @if (!string.IsNullOrEmpty(R.Body))
+        {
+            <p>@R.Body</p>
+        }
+        @if (NeedName)
+        {
+            <label class="field">
+                <span>To confirm, type <code class="name">@R.Name</code> <button type="button" class="link small" @onclick="Copy"><Icon Name="copy" Size="12" /> @(copied ? "Copied" : "Copy")</button></span>
+                <input id="confirm-name" class="input mono" @bind="typed" @bind:event="oninput" autocomplete="off" spellcheck="false" />
+            </label>
+        }
+        @if (NeedPassword)
+        {
+            <label class="field">
+                <span>Your @ServerApp.Name password</span>
+                <input id="confirm-password" class="input" type="password" @bind="password" @bind:event="oninput" autocomplete="current-password" />
+            </label>
+        }
+        @if (problem != null)
+        {
+            <p class="bad-text">@problem</p>
+        }
+        <div class="row-btns">
+            <button type="button" class="btn" @onclick="Cancel">Cancel</button>
+            <button type="button" class="btn @(R.Danger ? "danger" : "pri")" disabled="@(!Ready || busy)" @onclick="Go">@(busy ? "Working…" : R.Action)</button>
+        </div>
+    </div>
+}
+
+@code {
+    ConfirmRequest R => Dialogs.Confirm;
+    string typed = "", password = "", problem;
+    bool copied, busy;
+    ConfirmRequest shown;
+
+    string Mode => R?.Mode ?? State.Web.Confirm;
+    bool NeedName => Mode != "password" && !string.IsNullOrEmpty(R?.Name);
+    bool NeedPassword => Mode != "type";
+    bool Ready => (!NeedName || typed == R.Name) && (!NeedPassword || password.Length > 0);
+
+    protected override void OnInitialized() { Dialogs.Changed += Redraw; }
+    void Redraw() { InvokeAsync(StateHasChanged); }
+
+    protected override async Task OnAfterRenderAsync(bool first)
+    {
+        if (R != null && shown != R)
+        {
+            shown = R;
+            typed = password = "";
+            problem = null;
+            copied = false;
+            try { await JS.InvokeVoidAsync("vs.focus", NeedName ? "confirm-name" : "confirm-password"); } catch { }
+            StateHasChanged();
+        }
+        if (R == null) shown = null;
+    }
+
+    async Task Copy()
+    {
+        try { copied = await JS.InvokeAsync<bool>("vs.copy", R.Name); } catch { }
+    }
+
+    void Cancel() { Dialogs.Close(); }
+
+    async Task Key(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") Cancel();
+        else if (e.Key == "Enter" && Ready) await Go();
+    }
+
+    async Task Go()
+    {
+        if (!Ready || busy) return;
+        if (NeedPassword && !Password.Verify(password, State.Web.PasswordHash))
+        {
+            problem = "That isn't your password.";
+            password = "";
+            return;
+        }
+        busy = true;
+        try
+        {
+            var r = R;
+            await r.Run();
+            if (Dialogs.Confirm == r) Dialogs.Close();
+        }
+        catch (Exception ex) { problem = WebApp.Message(ex); }
+        finally { busy = false; }
+    }
+
+    public void Dispose() { Dialogs.Changed -= Redraw; }
+}

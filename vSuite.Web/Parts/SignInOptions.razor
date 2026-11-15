@@ -1,0 +1,264 @@
+@* Options > Sign-in (vSuite.Web): your login, the authenticator code, addresses that skip signing in, staying signed in, keys for apps,
+   and how dangerous actions are confirmed. Every change asks for the password first. The app's Options page puts it in its Sign-in page:
+     ClientIp     the visitor's address (Routes cascades it)     KeysHint  which apps use keys (vDeploy: vShell's plugin and vTrace)
+     ActionsHint  what counts as a dangerous action              ApiLink   a page that lists what a key can ask (null = none) *@
+@implements IDisposable
+@inject IWebState State
+@inject Dialogs Dialogs
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject Clock Clock
+
+<h4>Your login</h4>
+<div class="ocard">
+    <Row Title="User name" Hint="What you type to sign in"><span class="mono">@S.UserName</span></Row>
+    <Row Title="Password" Hint="At least 10 characters" Wide="true">
+        <Below>
+            <div class="addrow">
+                <input class="input w180" type="password" placeholder="New password" @bind="newPassword" autocomplete="new-password" />
+                <input class="input w180" type="password" placeholder="Again" @bind="newAgain" autocomplete="new-password" />
+                <button type="button" class="btn" @onclick="ChangePassword">Change it</button>
+                @if (passwordNote != null) { <span class="small @(passwordOk ? "ok-text" : "bad-text")">@passwordNote</span> }
+            </div>
+        </Below>
+    </Row>
+</div>
+
+<h4>Authenticator code</h4>
+<div class="ocard">
+    <Row Title="Ask for a code from an authenticator app" Hint="After your password, the 6-digit code from an app such as Aegis, 2FAS or Google Authenticator">
+        <Toggle Value="@(!string.IsNullOrEmpty(S.TotpSecret) || totpNew != null)" ValueChanged="TotpSwitch" />
+    </Row>
+    @if (totpNew != null)
+    {
+        <Row Title="@("Add " + ServerApp.Name + " to your app")" Hint="In the app choose Enter a key (or Add manually), type this key, then the code it shows." Wide="true">
+            <Below>
+                <code class="keyline big">@Grouped(totpNew)</code>
+                <div class="addrow">
+                    <button type="button" class="link small" @onclick="CopyTotp"><Icon Name="copy" Size="12" /> @(copiedTotp ? "Copied" : "Copy the key")</button>
+                    <span class="dim small">Account: @S.UserName · @ServerApp.Name · time-based, 6 digits</span>
+                </div>
+                <div class="addrow">
+                    <input class="input mono w120" placeholder="123456" inputmode="numeric" maxlength="7" @bind="totpCode" />
+                    <button type="button" class="btn pri" @onclick="TotpOn">Turn it on</button>
+                    <button type="button" class="btn" @onclick="() => totpNew = null">Cancel</button>
+                    @if (totpProblem != null) { <span class="bad-text small">@totpProblem</span> }
+                </div>
+            </Below>
+        </Row>
+    }
+</div>
+
+<h4>No sign-in from these addresses</h4>
+<div class="ocard">
+    <Row Title="Go straight in from these addresses" Hint="@("Anyone on them uses " + ServerApp.Name + " as you. Your VPN shouldn't be one of them, so it always asks.")">
+        <Toggle Value="@S.TrustedOn" ValueChanged="TrustedSwitch" />
+    </Row>
+    <Row Title="Addresses and ranges" Hint="@("You're on " + (ClientIp ?? "an unknown address") + " now" + (Here != null ? ", which is in the list (" + (Here.Name ?? Here.Range) + ")." : "."))" Wide="true">
+        <Below>
+            <div class="tablebox slim">
+                <table class="grid">
+                    @foreach (var t in S.Trusted.ToList())
+                    {
+                        <tr><td class="mono">@t.Range</td><td>@t.Name</td><td class="num"><button type="button" class="iconbtn" title="Remove" @onclick="() => Guarded(null, () => S.Trusted.Remove(t))"><Icon Name="close" Size="10" /></button></td></tr>
+                    }
+                    @if (S.Trusted.Count == 0)
+                    {
+                        <tr><td class="dim" colspan="3">None yet - every visit signs in.</td></tr>
+                    }
+                </table>
+            </div>
+            <div class="addrow">
+                <input class="input mono w180" placeholder="10.0.10.0/24" @bind="newRange" />
+                <input class="input w180" placeholder="Home network" @bind="newRangeName" />
+                <button type="button" class="btn" @onclick="AddRange">Add</button>
+                @if (ClientIp != null && Here == null) { <button type="button" class="link small" @onclick="UseThisDevice">Use this device's address</button> }
+                @if (rangeProblem != null) { <span class="bad-text small">@rangeProblem</span> }
+            </div>
+        </Below>
+    </Row>
+</div>
+
+<h4>Staying signed in</h4>
+<div class="ocard">
+    <Row Title="Stay signed in for" Hint="On each device, then it asks again">
+        <Seg Value="@S.StayDays.ToString()" ValueChanged="v => Set(() => S.StayDays = int.Parse(v))" Choices="@StayChoices.Select(c => new KeyValuePair<string, string>(c.ToString(), c == 1 ? "1 day" : c + " days"))" />
+    </Row>
+    <Row Title="Sign out every device" Hint="Every browser that's signed in has to sign in again - this one too">
+        <button type="button" class="btn" @onclick="SignOutAll">Sign out all</button>
+    </Row>
+</div>
+
+<h4>Apps</h4>
+<div class="ocard">
+    <Row Title="Keys for apps" Hint="@KeysHint" Wide="true">
+        <Below>
+            <div class="tablebox slim">
+                <table class="grid">
+                    @foreach (var k in S.ApiKeys.ToList())
+                    {
+                        <tr><td>@k.Name</td><td class="dim small">made @Clock.Stamp(k.Made)@(k.Used != null ? " · last used " + Clock.Stamp(k.Used) : " · not used yet")</td>
+                            <td class="num"><button type="button" class="iconbtn" title="Remove" @onclick='() => Guarded("Remove the key " + k.Name + "?", () => S.ApiKeys.Remove(k))'><Icon Name="close" Size="10" /></button></td></tr>
+                    }
+                    @if (S.ApiKeys.Count == 0)
+                    {
+                        <tr><td class="dim" colspan="3">None yet.</td></tr>
+                    }
+                </table>
+            </div>
+            @if (newKey != null)
+            {
+                <code class="keyline">@newKey</code>
+                <div class="addrow">
+                    <button type="button" class="btn" @onclick="CopyNewKey"><Icon Name="copy" Size="12" /> @(copiedNewKey ? "Copied" : "Copy")</button>
+                    <span class="dim small">This is the only time it's shown.</span>
+                </div>
+            }
+            <div class="addrow">
+                <input class="input w180" placeholder="vShell on my PC" @bind="newKeyName" />
+                <button type="button" class="btn" @onclick="MakeKey">Make a key</button>
+                @if (ApiLink != null)
+                {
+                    <a class="small" href="@ApiLink">What a key can ask - the API</a>
+                }
+            </div>
+        </Below>
+    </Row>
+</div>
+
+<h4>Dangerous actions</h4>
+<div class="ocard">
+    <Row Title="Before a dangerous action, ask you to" Hint="@(ActionsHint + " Changing sign-in always asks for your password.")">
+        <Seg Value="@S.Confirm" ValueChanged="v => Guarded(null, () => S.Confirm = v)" Choices="ConfirmChoices" />
+    </Row>
+</div>
+
+@code {
+    [Parameter] public string ClientIp { get; set; }
+    [Parameter] public string KeysHint { get; set; } = "Apps sign in with a key of their own - paste it into their settings. Each key can do what you can, except change these options. It's shown once; remove it to stop that app.";
+    [Parameter] public string ActionsHint { get; set; } = "Removing things, showing secrets.";
+    [Parameter] public string ApiLink { get; set; }
+
+    /// <summary>Stay signed in for: the choices (days).</summary>
+    public static readonly int[] StayChoices = { 1, 7, 30, 90 };
+    static readonly KeyValuePair<string, string>[] ConfirmChoices = { new("type", "Type the name"), new("password", "Your password"), new("both", "Both") };
+
+    IWebSettings S => State.Web;
+    TrustedAddress Here => ClientIp == null ? null : S.Trusted.FirstOrDefault(t => IpRange.Contains(t.Range, System.Net.IPAddress.TryParse(ClientIp, out var ip) ? ip : null));
+
+    string newRange, newRangeName, rangeProblem, newPassword, newAgain, passwordNote, totpNew, totpCode, totpProblem, newKey, newKeyName;
+    bool copiedTotp, passwordOk, copiedNewKey;
+
+    protected override void OnInitialized() { State.Changed += Redraw; Clock.Changed += Redraw; }
+    void Redraw() { InvokeAsync(StateHasChanged); }
+
+    void Set(Action change) { change(); State.Save(); }
+
+    /// <summary>Sign-in changes ask for your password first; once it's given they're made.</summary>
+    void Guarded(string title, Action change)
+    {
+        Dialogs.Ask(new ConfirmRequest
+        {
+            Title = title ?? "Change sign-in?",
+            Body = "Changes to signing in need your password.",
+            Mode = "password",
+            Action = "Change it",
+            Danger = false,
+            Run = () => { change(); State.Save(); Log.Write("Sign-in options changed"); return Task.CompletedTask; },
+        });
+    }
+
+    void TrustedSwitch(bool on) { Guarded(on ? "Go straight in from these addresses?" : "Always ask to sign in?", () => S.TrustedOn = on); }
+
+    void UseThisDevice() { newRange = ClientIp; newRangeName = "This device"; }
+
+    void AddRange()
+    {
+        rangeProblem = null;
+        if (!IpRange.TryParse(newRange, out _)) { rangeProblem = "That isn't an address (10.0.10.23) or a range (10.0.10.0/24)."; return; }
+        var t = new TrustedAddress { Range = newRange.Trim(), Name = string.IsNullOrWhiteSpace(newRangeName) ? null : newRangeName.Trim() };
+        Guarded("Go straight in from " + t.Range + "?", () => { S.Trusted.Add(t); newRange = newRangeName = null; });
+    }
+
+    void ChangePassword()
+    {
+        passwordOk = false;
+        passwordNote = Password.Problem(newPassword);
+        if (passwordNote != null) return;
+        if (newPassword != newAgain) { passwordNote = "The two aren't the same."; return; }
+        string pw = newPassword;
+        Dialogs.Ask(new ConfirmRequest
+        {
+            Title = "Change your password?",
+            Body = "Type your current password to change it.",
+            Mode = "password",
+            Action = "Change it",
+            Danger = false,
+            Run = () =>
+            {
+                S.PasswordHash = Password.Hash(pw);
+                State.Save();
+                Log.Write("Password changed");
+                newPassword = newAgain = null;
+                passwordOk = true;
+                passwordNote = "Changed.";
+                InvokeAsync(StateHasChanged);
+                return Task.CompletedTask;
+            },
+        });
+    }
+
+    void TotpSwitch(bool on)
+    {
+        totpProblem = null;
+        if (on) { totpNew = Totp.NewSecret(); totpCode = null; return; }
+        if (totpNew != null) { totpNew = null; return; }
+        Guarded("Stop asking for a code?", () => S.TotpSecret = null);
+    }
+
+    void TotpOn()
+    {
+        if (!Totp.Check(totpNew, totpCode, DateTimeOffset.Now)) { totpProblem = "That code doesn't match. Check the key you typed, and that the phone's clock is right."; return; }
+        string secret = totpNew;
+        Guarded("Ask for a code when signing in?", () => { S.TotpSecret = Secrets.Protect(secret); totpNew = null; });
+    }
+
+    void SignOutAll()
+    {
+        Dialogs.Ask(new ConfirmRequest
+        {
+            Title = "Sign out every device?",
+            Body = "Every browser signed in to " + ServerApp.Name + " has to sign in again, this one too.",
+            Mode = "password",
+            Action = "Sign out all",
+            Run = () =>
+            {
+                S.Stamp++;
+                State.Save();
+                Log.Write("Signed out every device");
+                Nav.NavigateTo("/logout", forceLoad: true);
+                return Task.CompletedTask;
+            },
+        });
+    }
+
+    void MakeKey()
+    {
+        string name = string.IsNullOrWhiteSpace(newKeyName) ? "An app" : newKeyName.Trim();
+        var (key, plain) = ApiKey.Make(name);
+        Guarded("Make a key for " + name + "?", () =>
+        {
+            S.ApiKeys.Add(key);
+            newKey = plain;
+            copiedNewKey = false;
+            newKeyName = null;
+        });
+    }
+
+    async Task CopyNewKey() { try { copiedNewKey = await JS.InvokeAsync<bool>("vs.copy", newKey); } catch { } }
+    async Task CopyTotp() { try { copiedTotp = await JS.InvokeAsync<bool>("vs.copy", totpNew); } catch { } }
+
+    static string Grouped(string s) { return string.Join(" ", Enumerable.Range(0, (s.Length + 3) / 4).Select(i => s.Substring(i * 4, Math.Min(4, s.Length - i * 4)))); }
+
+    public void Dispose() { State.Changed -= Redraw; Clock.Changed -= Redraw; }
+}

@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    vSuite.Server: what the suite's server apps (vDeploy, vPatch - Linux web apps in an LXC or Docker) share without a web page:
+    the data folder, safe JSON files, the log, sign-in pieces (passwords, authenticator codes, address ranges, secrets, app keys),
+    SSH to hosts with the app's own key, and updating itself from the update site. Plain .NET + SSH.NET - no Windows, no WPF.
+    The pages (theme, sign-in gate, tabs, the window) are vSuite.Web.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>vSuite.Server</AssemblyName>
+    <RootNamespace>vSuite.Server</RootNamespace>
+    <Version>1.0.34</Version>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SSH.NET" Version="2026.0.0" />
+  </ItemGroup>
+
+</Project>

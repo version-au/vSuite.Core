@@ -1,0 +1,28 @@
+@* The suite's Options window (OptionsWindowBase) as a page: the page list on the left with the app's brand, the page's title and its
+   cards on the right; every change saved at once (no OK). The app's Options page lists its pages and fills ChildContent for Current. *@
+
+<div class="options">
+    <nav class="opt-nav">
+        <div class="opt-brand">@Logo<span>@ServerApp.Name</span></div>
+        @foreach (var p in Pages)
+        {
+            <a class="@(Current == p.Key ? "on" : "")" href="/options/@p.Key"><Icon Name="@p.Icon" Size="15" /><span>@p.Title</span></a>
+        }
+    </nav>
+    <div class="opt-page">
+        <div class="opt-inner">
+            <h1>@(Pages.FirstOrDefault(p => p.Key == Current)?.Title)</h1>
+            @ChildContent
+        </div>
+    </div>
+</div>
+
+@code {
+    public sealed record OptPage(string Key, string Title, string Icon);
+
+    [Parameter] public IReadOnlyList<OptPage> Pages { get; set; }
+    [Parameter] public string Current { get; set; }
+    /// <summary>The app's icon at 22 px.</summary>
+    [Parameter] public RenderFragment Logo { get; set; }
+    [Parameter] public RenderFragment ChildContent { get; set; }
+}

@@ -1,0 +1,13 @@
+<div class="use">
+    <span class="use-k">@Label</span>
+    <div class="bar"><i class="@(Fraction >= 0.85 ? "hi" : "")" style="width:@Pct"></i></div>
+    <span class="use-v">@Text</span>
+</div>
+
+@code {
+    [Parameter] public string Label { get; set; }
+    [Parameter] public double Fraction { get; set; }
+    [Parameter] public string Text { get; set; }
+
+    string Pct => Math.Max(0, Math.Min(100, Fraction * 100)).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + "%";
+}

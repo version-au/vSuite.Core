@@ -1,0 +1,67 @@
+@* First start (vSuite.Web): make the login, then on to WebApp.AfterSetup. *@
+@page "/setup"
+@layout SuiteBareLayout
+@attribute [ExcludeFromInteractiveRouting]
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Authentication.Cookies
+@inject IWebState State
+@inject NavigationManager Nav
+
+<PageTitle>Set up · @ServerApp.Name</PageTitle>
+
+<h1 class="bare-title">Make your login</h1>
+<p class="dim">This is the first time @ServerApp.Name has started. Choose the name and password you'll sign in with. You can add an authenticator code and addresses that skip signing in afterwards, in Options.</p>
+
+<EditForm Model="Input" FormName="setup" OnSubmit="Make" class="form">
+    <label class="field">
+        <span>User name</span>
+        <InputText @bind-Value="Input.User" class="input" autocomplete="username" autofocus />
+    </label>
+    <label class="field">
+        <span>Password</span>
+        <InputText @bind-Value="Input.Password" type="password" class="input" autocomplete="new-password" />
+        <small class="dim">At least 10 characters</small>
+    </label>
+    <label class="field">
+        <span>Password again</span>
+        <InputText @bind-Value="Input.Again" type="password" class="input" autocomplete="new-password" />
+    </label>
+    @if (Problem != null)
+    {
+        <p class="bad-text">@Problem</p>
+    }
+    <button type="submit" class="btn pri wide">Make the login</button>
+</EditForm>
+
+@code {
+    [CascadingParameter] HttpContext HttpContext { get; set; }
+    [SupplyParameterFromForm] SetupInput Input { get; set; }
+    string Problem;
+
+    public sealed class SetupInput
+    {
+        public string User { get; set; }
+        public string Password { get; set; }
+        public string Again { get; set; }
+    }
+
+    protected override void OnInitialized() { Input ??= new SetupInput(); }
+
+    async Task Make()
+    {
+        var s = State.Web;
+        if (s.HasLogin) { Nav.NavigateTo("/login", forceLoad: true); return; }
+        string user = (Input.User ?? "").Trim();
+        if (user.Length == 0) { Problem = "Choose a user name."; return; }
+        Problem = Password.Problem(Input.Password);
+        if (Problem != null) return;
+        if (Input.Password != Input.Again) { Problem = "The two passwords aren't the same."; return; }
+        s.UserName = user;
+        s.PasswordHash = Password.Hash(Input.Password);
+        State.Save();
+        Log.Write("Login made for " + user);
+        await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, Auth.Principal(s, trusted: false),
+            new AuthenticationProperties { IsPersistent = true, ExpiresUtc = DateTimeOffset.UtcNow.AddDays(s.StayDays), AllowRefresh = true });
+        Nav.NavigateTo(WebApp.AfterSetup, forceLoad: true);
+    }
+}

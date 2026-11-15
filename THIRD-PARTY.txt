@@ -1,0 +1,13 @@
+vSuite.Core uses these, with thanks:
+
+Vanara - Windows Shell access (vSuite.Shell)
+  (c) David Hall - https://github.com/dahall/Vanara
+  Licence: MIT.
+
+SSH.NET - SSH (vSuite.Server, the server apps)
+  (c) Renci and the SSH.NET contributors - https://github.com/sshnet/SSH.NET
+  Licence: MIT.
+
+BouncyCastle.Cryptography - used by SSH.NET
+  (c) The Legion of the Bouncy Castle Inc. - https://www.bouncycastle.org/csharp
+  Licence: MIT.

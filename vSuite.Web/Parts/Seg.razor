@@ -1,0 +1,15 @@
+@* Two to four choices side by side (Options' Segmented). *@
+<div class="seg-ctl" role="radiogroup">
+    @foreach (var c in Choices)
+    {
+        <button type="button" role="radio" aria-checked="@(c.Key == Value ? "true" : "false")" class="@(c.Key == Value ? "on" : "")" @onclick="() => Pick(c.Key)">@c.Value</button>
+    }
+</div>
+
+@code {
+    [Parameter] public string Value { get; set; }
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter] public IEnumerable<KeyValuePair<string, string>> Choices { get; set; }
+
+    Task Pick(string k) { return ValueChanged.InvokeAsync(k); }
+}

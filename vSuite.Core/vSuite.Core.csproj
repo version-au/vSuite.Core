@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    vSuite.Core: what vShell, vXplorer and vView share - the vShell theme, glass, styles, themed questions, the log, one running copy,
+    the app icon, and updates from GitHub. Built into each app (a project reference through the app's vSuite.Core submodule).
+    No NuGet packages: vShell takes it too, and shouldn't carry the others' dependencies.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>vSuite.Core</AssemblyName>
+    <RootNamespace>vSuite</RootNamespace>
+    <Version>1.0.34</Version>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+</Project>

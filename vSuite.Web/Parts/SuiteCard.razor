@@ -1,0 +1,19 @@
+@* Sign-in, first-time setup and errors: one card in the middle, in the theme's colours, with the app's icon (40 px) and name. *@
+@inject IWebState State
+@inject ThemeStore Themes
+
+<HeadContent>
+    <style>@((MarkupString)Themes.Css(State.Web))</style>
+</HeadContent>
+
+<div class="bare">
+    <div class="bare-card">
+        <div class="bare-brand">@Logo<span>@ServerApp.Name</span></div>
+        @ChildContent
+    </div>
+</div>
+
+@code {
+    [Parameter] public RenderFragment Logo { get; set; }
+    [Parameter] public RenderFragment ChildContent { get; set; }
+}

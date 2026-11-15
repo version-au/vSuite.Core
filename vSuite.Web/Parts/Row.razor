@@ -1,0 +1,23 @@
+@* One row of an Options card: what it is (and a hint under it), the control on the right. *@
+<div class="orow @(Wide ? "wide" : "")">
+    <div class="orow-text">
+        <div class="orow-title">@Title</div>
+        @if (!string.IsNullOrEmpty(Hint))
+        {
+            <div class="orow-hint">@Hint</div>
+        }
+        @Below
+    </div>
+    @if (ChildContent != null)
+    {
+        <div class="orow-ctl">@ChildContent</div>
+    }
+</div>
+
+@code {
+    [Parameter] public string Title { get; set; }
+    [Parameter] public string Hint { get; set; }
+    [Parameter] public bool Wide { get; set; }
+    [Parameter] public RenderFragment ChildContent { get; set; }
+    [Parameter] public RenderFragment Below { get; set; }
+}
