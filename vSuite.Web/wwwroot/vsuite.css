@@ -42,7 +42,9 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 4px 0; }
 }
 .capbtn:hover { background: var(--hover); }
 .capbtn:active { background: var(--active); }
-.capbtn.appicon { margin-right: 0; }
+.capbtn.appicon { margin-right: 0; width: auto; padding: 0 10px 0 8px; display: flex; align-items: center; gap: 7px; }
+.capbtn.appicon .appname { font-size: 13px; font-weight: 600; white-space: nowrap; }
+@media (max-width: 600px) { .capbtn.appicon .appname { display: none; } .capbtn.appicon { width: 34px; padding: 0; justify-content: center; } }
 .capbtn.plus { margin-left: 2px; align-self: end; margin-bottom: 2px; }
 .free { flex: 1; min-width: 8px; align-self: stretch; }
 

@@ -19,7 +19,7 @@
 
 <div class="app @(sideOpen ? "" : "noside")" style="--side-w:@(sideWidth)px">
     <header class="caption">
-        <button type="button" class="capbtn appicon" title="@ServerApp.Name" aria-haspopup="menu" @onclick="() => menuOpen = !menuOpen">@Logo</button>
+        <button type="button" class="capbtn appicon" title="@ServerApp.Name" aria-haspopup="menu" @onclick="() => menuOpen = !menuOpen">@Logo<span class="appname">@ServerApp.Name</span></button>
         <button type="button" class="capbtn" title="Side panel (Ctrl+B)" @onclick="ToggleSide"><Icon Name="side" /></button>
         <div class="tabstrip" id="tabstrip" role="tablist" style="--tabs:@Tabs.Items.Count">
             @foreach (var t in Tabs.Items)

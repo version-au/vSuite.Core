@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.36
+
+- vSuite.Web: the app's name next to its icon at the top left (hidden on a phone).
+
 ## 1.0.34
 
 - vSuite.Web: a "vm" icon (a screen) for virtual machines.
