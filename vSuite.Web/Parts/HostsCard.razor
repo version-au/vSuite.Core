@@ -1,0 +1,129 @@
+@* Options > General > Hosts (vDeploy, vPatch, vTrace): export the hosts you tick as a vsuite-hosts file, and import one another app
+   saved. Only where each host is and its SSH host key travel - never a user, password or key. What an imported host needs to be
+   added (a sign-in) is the app's: ImportAction is shown beside each host that isn't here yet, ImportAll (optional) under the list. *@
+@using Microsoft.AspNetCore.Components.Forms
+
+<h4>Hosts</h4>
+<div class="ocard">
+    <Row Title="Export hosts" Hint="@("A file with each host's name, address, port and SSH host key - no users, passwords or keys. vDeploy, vPatch and vTrace can import it, each signing in its own way.")" Wide="@exporting">
+        <Below>
+            @if (exporting)
+            {
+                @if (Hosts.Count == 0)
+                {
+                    <p class="dim small">No hosts to export yet.</p>
+                }
+                else
+                {
+                    <div class="hostpick">
+                        @foreach (var h in Hosts)
+                        {
+                            var host = h;
+                            <label class="check"><input type="checkbox" checked="@(!skip.Contains(Key(host)))" @onchange="e => Tick(host, e.Value is true)" /><span><b>@host.Name</b> <span class="dim small mono">@host.Address@(host.Port != 22 ? ":" + host.Port : "")</span></span></label>
+                        }
+                    </div>
+                    <div class="row-btns left">
+                        @if (Picked.Count == 0)
+                        {
+                            <button type="button" class="btn pri" disabled>Export</button>
+                        }
+                        else
+                        {
+                            <a class="btn pri" href="@Link" download="@HostsFile.FileName(App, made)"><Icon Name="download" Size="12" /> Export @Picked.Count host@(Picked.Count == 1 ? "" : "s")</a>
+                        }
+                        <button type="button" class="btn" @onclick="() => All(true)">All</button>
+                        <button type="button" class="btn" @onclick="() => All(false)">None</button>
+                    </div>
+                }
+            }
+        </Below>
+        <ChildContent>
+            <button type="button" class="btn @(exporting ? "on" : "")" @onclick="ToggleExport"><Icon Name="download" Size="12" /> @(exporting ? "Close" : "Choose…")</button>
+        </ChildContent>
+    </Row>
+    <Row Title="Import hosts" Hint="@ImportHint" Wide="@(imported != null || problem != null)">
+        <Below>
+            @if (problem != null)
+            {
+                <p class="bad-text small">@problem</p>
+            }
+            @if (imported != null)
+            {
+                <p class="dim small">@(imported.Count) host@(imported.Count == 1 ? "" : "s") in the file@(from != null ? ", from " + from : "")@(fresh.Count < imported.Count ? " - " + (imported.Count - fresh.Count) + " here already" : "").</p>
+                <div class="hostimport">
+                    @foreach (var h in imported)
+                    {
+                        var host = h;
+                        bool here = IsHere(host);
+                        <div class="hostline @(here ? "here" : "")">
+                            <span><b>@host.Name</b> <span class="dim small mono">@host.Address@(host.Port != 22 ? ":" + host.Port : "")</span>@if (!string.IsNullOrEmpty(host.Os)) { <span class="dim small"> · @host.Os</span> }</span>
+                            @if (here)
+                            {
+                                <span class="dim small">here already</span>
+                            }
+                            else if (ImportAction != null)
+                            {
+                                @ImportAction(host)
+                            }
+                        </div>
+                    }
+                </div>
+                @if (ImportAll != null && fresh.Count > 0)
+                {
+                    <div class="row-btns left">@ImportAll(fresh)</div>
+                }
+            }
+        </Below>
+        <ChildContent>
+            <label class="btn filebtn"><Icon Name="upload" Size="12" /> Choose a file…<InputFile OnChange="Read" accept=".json,application/json" /></label>
+        </ChildContent>
+    </Row>
+</div>
+
+@code {
+    /// <summary>The app's name ("vTrace") - the file's From and its name.</summary>
+    [Parameter] public string App { get; set; }
+    /// <summary>The app's version, for the file's From.</summary>
+    [Parameter] public string Version { get; set; }
+    /// <summary>The hosts here, as file entries (the app's own order).</summary>
+    [Parameter] public List<HostsFile.Entry> Hosts { get; set; } = new();
+    /// <summary>What adding an imported host looks like here (a link to Add a host with it filled in, a button).</summary>
+    [Parameter] public RenderFragment<HostsFile.Entry> ImportAction { get; set; }
+    /// <summary>Optional: one action for every imported host that isn't here yet (vPatch's import with one password).</summary>
+    [Parameter] public RenderFragment<List<HostsFile.Entry>> ImportAll { get; set; }
+    /// <summary>The import's hint (what happens next in this app).</summary>
+    [Parameter] public string ImportHint { get; set; } = "A file another vSuite app exported - then add each host from the list.";
+
+    bool exporting;
+    readonly HashSet<string> skip = new();
+    DateTimeOffset made = DateTimeOffset.Now;
+    List<HostsFile.Entry> imported, fresh = new();
+    string from, problem;
+
+    static string Key(HostsFile.Entry h) { return (h.Address ?? "").ToLowerInvariant() + ":" + h.Port; }
+
+    List<HostsFile.Entry> Picked => Hosts.Where(h => !skip.Contains(Key(h))).ToList();
+
+    void ToggleExport() { exporting = !exporting; if (exporting) { skip.Clear(); made = DateTimeOffset.Now; } }
+    void Tick(HostsFile.Entry h, bool on) { if (on) skip.Remove(Key(h)); else skip.Add(Key(h)); }
+    void All(bool on) { skip.Clear(); if (!on) foreach (var h in Hosts) skip.Add(Key(h)); }
+
+    /// <summary>The file itself, as a link (a few KB - no download endpoint needed).</summary>
+    string Link => "data:application/json;charset=utf-8;base64," + Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(HostsFile.Json(Picked, App + " " + Version, made)));
+
+    bool IsHere(HostsFile.Entry h) { return Hosts.Any(x => HostsFile.Same(h, x.Address, x.Port)); }
+
+    async Task Read(InputFileChangeEventArgs e)
+    {
+        problem = null; imported = null; fresh = new();
+        try
+        {
+            using var r = new StreamReader(e.File.OpenReadStream(1024 * 1024));
+            var (hosts, f, p) = HostsFile.Read(await r.ReadToEndAsync());
+            if (p != null && hosts == null) { problem = p; return; }
+            imported = hosts; from = f; problem = p;
+            fresh = hosts.Where(h => !IsHere(h)).ToList();
+        }
+        catch (IOException) { problem = "That file is too big for a hosts file (over 1 MB)."; }
+    }
+}

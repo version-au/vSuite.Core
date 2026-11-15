@@ -25,7 +25,12 @@ app then moves its submodule forward (`git -C vSuite.Core pull` + commit in the 
   links the file), `SelfUpdate` (`ISelfUpdateSettings`; run.sh swaps app.new in, exit code 3). Moved from vDeploy 0.1.17 unchanged in
   behaviour - vDeploy's tests (vDeploy.Tests) cover it for now. `IWebSettings` (ISignInSettings + Confirm, VShellColours, TextSize) is
   here too - an app's settings class lives in its project without web parts.
-- `vSuite.Web` (1.0.32-1.0.34, Razor class library on vSuite.Server): the server apps' pages - a vSuite window in a browser.
+  `HostsFile` (1.0.35): the hosts file the server apps exchange ("vsuite-hosts" format 1 - name, address, port, SSH host key, OS,
+  CPU, never a user / password / key; vDeploy's older "vdeploy-hosts" reads too) - `Json`, `Read` (problems in words), `FileName`, `Same`.
+- `vSuite.Web` (1.0.32-1.0.35, Razor class library on vSuite.Server): the server apps' pages - a vSuite window in a browser.
+  - `HostsCard` (1.0.35): Options > General > Hosts in vDeploy, vPatch and vTrace - export the ticked hosts (a data: link, no endpoint)
+    and import a file; the app gives `ImportAction` (per host not here yet) and optionally `ImportAll`. Icons added: upload, pc, server,
+    timeline, map, ai, outage.
   - Services: `WebTheme` (vShell's theme -> CSS variables; field names are what the vShell plugins send - keep them), `ThemeStore`
     (theme.json, `For` / `Css(settings)`), `Auth` + `Gate` (setup / cookie / trusted address / sign-in; an app key opens /api/v1/ only;
     `GateRules.First` = the app's own rules first - vDeploy's helper port and webhooks), `Tabs` (KeyOf / RankOf virtual - vDeploy's
