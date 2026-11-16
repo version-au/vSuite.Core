@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.41
+
+- Glass: the wallpaper's file is looked at off the UI thread - a wallpaper on a network share that has gone away no longer holds every window for seconds, every 4 seconds.
+- TermLink: Send knows at once when no vTerm is listening (`Listening`) instead of trying for a second and a half at full speed - vTerm starts faster.
+
 ## 1.0.40
 
 - vSuite.Web: a path that ends like a file (/options/a.css) or /not-found no longer shows a page without signing in.

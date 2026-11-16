@@ -95,6 +95,40 @@ namespace vSuite.Ui
             return _dw;
         }
 
+        // ---------------- is the picture's file there, and when was it written ----------------
+        // Asked every few seconds on the UI thread (Check). A wallpaper on a network share that has gone away would hold every
+        // window for the network's timeout each time - so the file is looked at on another thread, and the UI thread waits only a
+        // moment for the answer: a slow share gives the last known answer now and the new one at the next look.
+
+        sealed class FileState { public bool Exists; public long Stamp; public DateTime At; public bool Busy; }
+        static readonly Dictionary<string, FileState> Files = new Dictionary<string, FileState>(StringComparer.OrdinalIgnoreCase);
+
+        static void StateOf(string f, out bool exists, out long stamp)
+        {
+            FileState s;
+            bool start = false, first;
+            lock (Files)
+            {
+                if (!Files.TryGetValue(f, out s)) { s = new FileState(); Files[f] = s; }
+                first = s.At == default(DateTime);
+                if (!s.Busy) { s.Busy = true; start = true; }
+            }
+            if (start)
+            {
+                var t = System.Threading.Tasks.Task.Run(() =>
+                {
+                    bool ex = false;
+                    long st = 0;
+                    try { ex = File.Exists(f); if (ex) st = File.GetLastWriteTimeUtc(f).Ticks; } catch { }
+                    lock (Files) { s.Exists = ex; s.Stamp = st; s.At = DateTime.UtcNow; s.Busy = false; }
+                });
+                try { t.Wait(first ? 400 : 150); } catch { }
+            }
+            lock (Files) { exists = s.Exists; stamp = s.Stamp; }
+        }
+
+        static bool There(string f) { bool e; long s; StateOf(f, out e, out s); return e; }
+
         /// <summary>The picture Windows shows on this monitor and how it is fitted (vShell sets its per-monitor pictures through Windows too).</summary>
         static string PictureFor(Monitor m, out Position fit)
         {
@@ -112,7 +146,7 @@ namespace vSuite.Ui
                         RECT r = dw.GetMonitorRECT(id);
                         if (r.Left != m.Bounds.X || r.Top != m.Bounds.Y || r.Right - r.Left != m.Bounds.Width) continue;
                         string f = dw.GetWallpaper(id);
-                        if (!string.IsNullOrEmpty(f) && File.Exists(f)) return f;
+                        if (!string.IsNullOrEmpty(f) && There(f)) return f;
                     }
                     catch { }
                 }
@@ -125,7 +159,7 @@ namespace vSuite.Ui
                     string p = k == null ? null : k.GetValue("WallPaper") as string;
                     // no picture set = a plain-colour desktop (Windows keeps the old TranscodedWallpaper file then - it mustn't be used)
                     if (string.IsNullOrEmpty(p)) return null;
-                    if (File.Exists(p)) return p;
+                    if (There(p)) return p;
                 }
             }
             catch { }
@@ -144,7 +178,7 @@ namespace vSuite.Ui
                 string f = PictureFor(m, out fit);
                 sb.Append(m.DeviceName).Append('@').Append(m.Bounds.X).Append(',').Append(m.Bounds.Y).Append(',').Append(m.Bounds.Width).Append('x').Append(m.Bounds.Height)
                   .Append('=').Append(f).Append(':').Append(fit);
-                try { if (f != null) sb.Append(':').Append(File.GetLastWriteTimeUtc(f).Ticks); } catch { }
+                if (f != null) { bool there; long stamp; StateOf(f, out there, out stamp); sb.Append(':').Append(stamp); }
                 sb.Append('|');
             }
             sb.Append("bg=").Append(BackgroundColour());

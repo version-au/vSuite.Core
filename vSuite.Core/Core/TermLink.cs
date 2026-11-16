@@ -70,9 +70,31 @@ namespace vSuite
             catch { return null; }
         }
 
+        /// <summary>
+        /// Is anything listening on that pipe? (Windows lists the pipes there are.) Connecting to one that isn't there doesn't fail at
+        /// once - it keeps trying for the whole timeout, at full speed: every start of vTerm lost a second and a half to it.
+        /// When the list can't be read: true (find out by connecting).
+        /// </summary>
+        public static bool Listening(string pipe)
+        {
+            try
+            {
+                foreach (string p in Directory.EnumerateFiles(@"\\.\pipe\"))
+                    if (string.Equals(Path.GetFileName(p), pipe, StringComparison.OrdinalIgnoreCase)) return true;
+                return false;
+            }
+            catch { return true; }
+        }
+
         /// <summary>Send a request; the answer, or null when no vTerm is listening on that pipe (not running) or it didn't answer in time.</summary>
         public static string Send(string pipe, TermRequest r, int timeoutMs = 3000)
         {
+            // not there: look a few more times before saying so - a listener has no pipe for an instant between two requests
+            for (int i = 0; !Listening(pipe); i++)
+            {
+                if (i >= 8) return null;
+                Thread.Sleep(25);
+            }
             try
             {
                 using (var c = new NamedPipeClientStream(".", pipe, PipeDirection.InOut, PipeOptions.CurrentUserOnly))
