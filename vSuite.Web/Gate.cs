@@ -49,7 +49,32 @@ public static class Auth
         bool forwarded = http.Request.Headers.ContainsKey("X-Forwarded-For") || http.Request.Headers.ContainsKey("Forwarded");
         bool knownProxy = direct != null && s.TrustedProxies.Any(p => IpRange.Contains(p, direct));
         if (forwarded && !knownProxy) return null;
+        if (OtherSite(http, knownProxy)) return null;
         return TrustedMatch(s, Client(http, s));
+    }
+
+    /// <summary>
+    /// Sent by another site's page? A browser says where a request came from (Origin) on everything a page of another site sends
+    /// that could change something. With no cookie to hold back, a trusted address would let any web page open on that PC press
+    /// the app's buttons - so a request whose Origin isn't the address it was sent to isn't trusted. (Apps with a key, and a
+    /// browser on the app's own pages, never get here with a different Origin.)
+    /// </summary>
+    public static bool OtherSite(HttpContext http, bool knownProxy)
+    {
+        string origin = http.Request.Headers["Origin"].ToString();
+        if (origin.Length == 0) return false;
+        if (!Uri.TryCreate(origin, UriKind.Absolute, out var o) || o.Host.Length == 0) return true;    // "null": a sandboxed frame, a file
+        if (SameHost(o, http.Request.Host)) return false;
+        if (knownProxy)     // a proxy that doesn't pass Host on says what it was in X-Forwarded-Host
+            foreach (string h in http.Request.Headers["X-Forwarded-Host"].ToString().Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                if (SameHost(o, new HostString(h))) return false;
+        return true;
+    }
+
+    static bool SameHost(Uri origin, HostString host)
+    {
+        if (!host.HasValue || !string.Equals(origin.Host, host.Host, StringComparison.OrdinalIgnoreCase)) return false;
+        return host.Port == null ? origin.IsDefaultPort : host.Port == origin.Port;
     }
 }
 

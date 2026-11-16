@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.39
+
+- vSuite.Web: a trusted address no longer lets another site's page use the app - a request a browser sends from a different site (its Origin) has to sign in.
+
 ## 1.0.38
 
 - vSuite.Web: SuiteWindow's + beside the tabs is left out when PlusPath is empty.
