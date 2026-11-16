@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.38
+
+- vSuite.Web: SuiteWindow's + beside the tabs is left out when PlusPath is empty.
+
 ## 1.0.37
 
 - vSuite.Server: SshRunner.OpenShell - a terminal (pty) on the host, for a terminal in the page.
