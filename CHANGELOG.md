@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.37
+
+- vSuite.Server: SshRunner.OpenShell - a terminal (pty) on the host, for a terminal in the page.
+
 ## 1.0.36
 
 - vSuite.Web: the app's name next to its icon at the top left (hidden on a phone).

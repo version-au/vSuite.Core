@@ -181,6 +181,18 @@ public sealed class SshRunner : IHostRunner
     }
 
     /// <summary>
+    /// A terminal on the host (a pty, its own channel on the same connection): a login shell - write "exec cmd" into it to run one
+    /// command that ends the session with it. Its output (colours, menus) is for a terminal to draw (xterm.js); ChangeWindowSize follows
+    /// the page's size. vDeploy's terminal in the page (1.0.37).
+    /// </summary>
+    public ShellStream OpenShell(uint columns, uint rows, string terminal = "xterm-256color")
+    {
+        try { return _c.CreateShellStream(terminal, columns, rows, 0, 0, 64 * 1024); }
+        catch (SshConnectionException ex) { throw new HostProblem("The connection dropped: " + ex.Message, ex); }
+        catch (SshException ex) { throw new HostProblem("Couldn't open a terminal: " + ex.Message, ex); }
+    }
+
+    /// <summary>
     /// A file onto the host by SFTP - or, when the host has no SFTP server (Debian 13 without openssh-sftp-server: the subsystem fails
     /// and SSH.NET says "Channel was closed" - arrstack-vm, 2026-11-12), through a plain command's input: cat into path.part, chmod,
     /// then moved into place. mode is written as chmod takes it (755, 600).
