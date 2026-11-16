@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.40
+
+- vSuite.Web: a path that ends like a file (/options/a.css) or /not-found no longer shows a page without signing in.
+- vSuite.Web: a listed proxy that doesn't say who it passes on is never taken for the visitor (its own address isn't tested against the trusted ones).
+- vSuite.Web: a trusted address only skips the sign-in on the app's own names - an address, a home-network name, or a name somebody has signed in on with the password (names.json). Stops a page that points its own name at the app (DNS rebinding).
+- vSuite.Server: JsonFile - a file that can't be read is never taken for an empty one: a copy is kept (.broken-<time>), the save before (.bak) is used, and with must the app stops instead. Saves are flushed to the disk.
+- Updater: the update's watchdog no longer ends a copy that still has a window open (asking to save) after 20 s - it waits for it to close.
+
 ## 1.0.39
 
 - vSuite.Web: a trusted address no longer lets another site's page use the app - a request a browser sends from a different site (its Origin) has to sign in.

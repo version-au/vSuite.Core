@@ -33,22 +33,58 @@ public static class JsonFile
         PropertyNameCaseInsensitive = true,
     };
 
-    public static T Load<T>(string path) where T : class, new()
+    /// <summary>
+    /// The file's object; a new one when there's no file yet. A file that's there but can't be read (cut short by a power cut, a
+    /// typo from editing it by hand) is never taken for "nothing yet": a copy is kept as name.broken-&lt;time&gt;, and the last good
+    /// save (name.bak) is used instead. Neither readable: a new object - or, with must (the settings and the hosts, where "empty"
+    /// would mean "no login yet" and be saved over the real file), the app stops and says which file.
+    /// </summary>
+    public static T Load<T>(string path, bool must = false) where T : class, new()
     {
-        try
+        if (!System.IO.File.Exists(path)) return new T();
+        string name = System.IO.Path.GetFileName(path);
+        try { return Read<T>(path); }
+        catch (Exception ex)
         {
-            if (System.IO.File.Exists(path))
-                return JsonSerializer.Deserialize<T>(System.IO.File.ReadAllText(path, Encoding.UTF8), Options) ?? new T();
+            Log.Write("Couldn't read " + name + ": " + ex.Message);
+            string kept = path + ".broken-" + DateTime.Now.ToString("yyyyMMdd-HHmmss");
+            try { System.IO.File.Copy(path, kept, true); if (path.EndsWith("settings.json")) Private(kept); Log.Write("A copy of it is kept as " + System.IO.Path.GetFileName(kept)); }
+            catch (Exception ex2) { Log.Write("Couldn't keep a copy of " + name + ": " + ex2.Message); }
+            string bak = path + ".bak";
+            if (System.IO.File.Exists(bak))
+                try
+                {
+                    T old = Read<T>(bak);
+                    Log.Write("Using " + name + ".bak (the save before the last one) instead");
+                    return old;
+                }
+                catch (Exception ex3) { Log.Write("Couldn't read " + name + ".bak either: " + ex3.Message); }
+            if (must)
+                throw new InvalidDataException(name + " in " + System.IO.Path.GetDirectoryName(path) + " can't be read (" + ex.Message + "), and neither can its .bak. " +
+                    "Put a good copy back, or move the file away to start again - " + ServerApp.Name + " won't start with it as it is, so nothing is saved over it.");
+            return new T();
         }
-        catch (Exception ex) { Log.Write("Couldn't read " + System.IO.Path.GetFileName(path) + ": " + ex.Message); }
-        return new T();
+    }
+
+    static T Read<T>(string path) where T : class, new()
+    {
+        string text = System.IO.File.ReadAllText(path, Encoding.UTF8);
+        if (string.IsNullOrWhiteSpace(text)) throw new InvalidDataException("the file is empty");
+        return JsonSerializer.Deserialize<T>(text, Options) ?? throw new InvalidDataException("the file holds nothing");
     }
 
     public static void Save<T>(string path, T value, bool secret = false)
     {
         string tmp = path + ".tmp";
-        System.IO.File.WriteAllText(tmp, JsonSerializer.Serialize(value, Options), new UTF8Encoding(false));
+        byte[] bytes = new UTF8Encoding(false).GetBytes(JsonSerializer.Serialize(value, Options));
+        using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None))
+        {
+            fs.Write(bytes, 0, bytes.Length);
+            fs.Flush(true);     // on the disk before it takes the old file's place: a power cut can't leave an empty file
+        }
         if (secret) Private(tmp);
+        // the file as it was stays as name.bak (it was read or written by us, so it's good)
+        try { if (System.IO.File.Exists(path)) System.IO.File.Copy(path, path + ".bak", true); } catch { }
         System.IO.File.Move(tmp, path, true);
     }
 

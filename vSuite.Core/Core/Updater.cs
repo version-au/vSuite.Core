@@ -583,8 +583,13 @@ $old = $Dir + '.old'; $failed = $Dir + '.failed'
 $ok = Join-Path $Data 'update-ok.txt'; $pending = Join-Path $Data 'update-pending.txt'; $failFile = Join-Path $Data 'update-failed.txt'
 $exePath = Join-Path $Dir $Exe
 # 1. wait for the app that asked for the update to close
-try { $p = Get-Process -Id $ProcessId -ErrorAction Stop; if (-not $p.WaitForExit(20000)) { Note ""the old $App did not close within 20 s - ending it""; $p.Kill(); $p.WaitForExit(5000) | Out-Null } } catch {}
+#    (one that still shows a window is asking something: it is left alone; only one with no window left is ended)
+try { $p = Get-Process -Id $ProcessId -ErrorAction Stop; $n = 0; $said = $false
+  while (-not $p.WaitForExit(1000)) { $n++; if ($n -lt 20) { continue }; $p.Refresh()
+    if ($p.MainWindowHandle -ne [IntPtr]::Zero -and $p.Responding) { if (-not $said) { $said = $true; Note ""the old $App still has a window open - waiting for it to close"" }; continue }
+    Note ""the old $App did not close within 20 s - ending it""; $p.Kill(); $p.WaitForExit(5000) | Out-Null; break } } catch {}
 Start-Sleep -Milliseconds 700
+if (Test-Path -LiteralPath $pending) { try { (Get-Item -LiteralPath $pending).LastWriteTimeUtc = [DateTime]::UtcNow } catch {} }
 # 2. the swap: install -> .old, the new one -> install
 if (Test-Path -LiteralPath $old) { Remove-Item -LiteralPath $old -Recurse -Force -ErrorAction SilentlyContinue }
 if (-not (Swap $Dir $old)) { Note ""couldn't move $Dir aside (a window or program still has it open) - staying on the old version""; Set-Content -Path $failFile -Value $To; Remove-Item $pending -ErrorAction SilentlyContinue; Start-Process -FilePath $exePath; exit 1 }
@@ -667,19 +672,34 @@ exit 1
                 string ok = Path.Combine(Log.Folder, OkFile);
                 string pending = Path.Combine(Log.Folder, PendingFile);
 
-                // 1. wait for the copy that asked for the update to close (its windows save as they go)
+                // 1. wait for the copy that asked for the update to close (its windows save as they go). One that still shows a
+                //    window is asking something ("Save the changes?") or was told to stay open: it's left alone however long that
+                //    takes, and the new version starts when it closes. Only one with no window left (stuck while closing) is ended.
                 try
                 {
                     using (Process p = Process.GetProcessById(pid))
-                        if (!p.WaitForExit(20000))
+                    {
+                        bool said = false;
+                        for (int waited = 0; !p.WaitForExit(1000); waited++)
                         {
+                            if (waited < 20) continue;
+                            bool window = true;
+                            try { p.Refresh(); window = p.MainWindowHandle != IntPtr.Zero && p.Responding; } catch { }   // not answering = stuck, not asking
+                            if (window)
+                            {
+                                if (!said) { said = true; Log.Write("Update: the previous " + App.Name + " still has a window open - waiting for it to close"); }
+                                continue;
+                            }
                             Log.Write("Update: the previous " + App.Name + " didn't close within 20 s - ending it");
                             try { p.Kill(); } catch { }
                             p.WaitForExit(5000);
+                            break;
                         }
+                    }
                 }
                 catch { }
                 Thread.Sleep(500);
+                try { if (File.Exists(pending)) File.SetLastWriteTimeUtc(pending, DateTime.UtcNow); } catch { }    // the wait may have been long
 
                 // 2. start the new version
                 Process child = Process.Start(new ProcessStartInfo(exe) { UseShellExecute = false, WorkingDirectory = dir });
