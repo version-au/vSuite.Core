@@ -15,5 +15,5 @@ its own exe.
 
 ## Licence
 
-Copyright (c) 2026 Steven (version-au). MIT - see [LICENSE](LICENSE). The parts by others are listed in
+Copyright (c) 2026 Steven Van Teylingen (version-au). MIT - see [LICENSE](LICENSE). The parts by others are listed in
 [THIRD-PARTY.txt](THIRD-PARTY.txt). The apps that use it are GPL-3.0: https://github.com/version-au
