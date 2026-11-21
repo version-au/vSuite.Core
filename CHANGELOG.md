@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.45
+
+- SnapLayouts: Windows' setting is read (1.0.44 never read it, so the menu never showed).
+
 ## 1.0.44
 
 - SnapLayouts: Windows 11's snap layouts menu on a window's own maximise button (only while Windows' Show snap layouts setting is on - otherwise the button is as it was).

@@ -12,7 +12,7 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <AssemblyName>vSuite.Core</AssemblyName>
     <RootNamespace>vSuite</RootNamespace>
-    <Version>1.0.44</Version>
+    <Version>1.0.45</Version>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
   </PropertyGroup>

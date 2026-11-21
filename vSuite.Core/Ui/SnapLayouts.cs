@@ -42,8 +42,8 @@ namespace vSuite.Ui
         /// <summary>Can snap layouts show? Tests set it; null = Windows' own settings.</summary>
         public static Func<bool> IsOnOverride { get; set; }
 
-        static bool _on;
-        static long _checked = long.MinValue;
+        static bool _on, _read;
+        static long _checked;
 
         /// <summary>Windows 11 (build 22000 on) with Snap windows and the hover menu on - Windows' defaults when the values aren't there.</summary>
         public static bool IsOn
@@ -52,14 +52,20 @@ namespace vSuite.Ui
             {
                 if (IsOnOverride != null) return IsOnOverride();
                 long now = Environment.TickCount64;
-                if (now - _checked < 3000) return _on;
+                if (!ReadAgain(_read, _checked, now)) return _on;
                 _checked = now;
-                _on = Read();
+                _read = true;
+                _on = ReadSetting();
                 return _on;
             }
         }
 
-        static bool Read()
+        /// <summary>Read Windows' setting again: the first time, then at most every 3 s. (1.0.44 started from long.MinValue - the
+        /// subtraction overflowed, so the setting was never read and the menu never came.)</summary>
+        public static bool ReadAgain(bool readBefore, long lastRead, long now) { return !readBefore || now - lastRead >= 3000 || now < lastRead; }
+
+        /// <summary>Windows' own settings, read now (IsOn keeps the answer a few seconds).</summary>
+        public static bool ReadSetting()
         {
             try
             {

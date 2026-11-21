@@ -28,6 +28,19 @@ namespace vSuite.Tests
         static void Settle() { Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle); }
 
         [Fact]
+        public void windows_setting_is_read_the_first_time_then_every_few_seconds()
+        {
+            // 1.0.44 never read it (its "last read" overflowed), so the menu never came on a real window
+            Assert.True(SnapLayouts.ReadAgain(false, 0, 0));
+            Assert.True(SnapLayouts.ReadAgain(false, 0, long.MaxValue - 5));
+            Assert.False(SnapLayouts.ReadAgain(true, 10_000, 11_000));
+            Assert.True(SnapLayouts.ReadAgain(true, 10_000, 13_000));
+            // and the real thing gives Windows' setting, not a stale "off"
+            SnapLayouts.IsOnOverride = null;
+            Assert.Equal(SnapLayouts.ReadSetting(), SnapLayouts.IsOn);
+        }
+
+        [Fact]
         public void the_maximise_button_gets_the_layouts_menu_only_while_snap_layouts_are_on()
         {
             Exception failed = null;
