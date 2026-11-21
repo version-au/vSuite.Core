@@ -12,7 +12,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>vSuite.Server</AssemblyName>
     <RootNamespace>vSuite.Server</RootNamespace>
-    <Version>1.0.43</Version>
+    <Version>1.0.44</Version>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
   </PropertyGroup>
 

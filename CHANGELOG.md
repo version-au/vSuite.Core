@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.44
+
+- SnapLayouts: Windows 11's snap layouts menu on a window's own maximise button (only while Windows' Show snap layouts setting is on - otherwise the button is as it was).
+
 ## 1.0.43
 
 - Glass: one picture of the whole desktop (every monitor's wallpaper in its place), made once - a window dragged across monitors or past a screen's edge is as smooth as on one monitor (1.0.42 drew the monitors' pictures again at every step).
