@@ -470,6 +470,8 @@ namespace vSuite.Ui
             _hooked = true;
             _win.LocationChanged += OnMoved;
             _win.Closed += OnClosed;
+            _src = PresentationSource.FromVisual(_win) as System.Windows.Interop.HwndSource;
+            _src?.AddHook(MoveHook);
             Backdrop.Changed += OnChanged;
             if (_mode != "Off") Backdrop.Use(true);
         }
@@ -479,15 +481,83 @@ namespace vSuite.Ui
             if (!_hooked) return;
             _hooked = false;
             if (_win != null) { _win.LocationChanged -= OnMoved; _win.Closed -= OnClosed; }
+            _src?.RemoveHook(MoveHook);
+            _src = null;
+            Still(false);
             Backdrop.Changed -= OnChanged;
             if (_mode != "Off") Backdrop.Use(false);
         }
 
         void OnMoved(object s, EventArgs e) { Update(); }
+
+        // ---- dragging the window ----
+        System.Windows.Interop.HwndSource _src;
+        readonly List<UIElement> _held = new List<UIElement>();
+        const int WM_MOVING = 0x0216, WM_EXITSIZEMOVE = 0x0232;
+
+        /// <summary>
+        /// While the window is dragged the glass shows a new part of the wallpaper at every step, and WPF drew everything over it again
+        /// each time - every row, preview and shadow of the content (laggy on a big window). So while it moves, the content above the glass
+        /// is held as a picture (a bitmap cache, at the resolution it draws at) and only the glass is drawn again; let go and it's live
+        /// again. Only while the glass shows, and never a cache the app set itself. Resizing isn't touched (the content changes shape).
+        /// </summary>
+        IntPtr MoveHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+        {
+            if (msg == WM_MOVING && _held.Count == 0 && Visibility == Visibility.Visible) Still(true);
+            else if (msg == WM_EXITSIZEMOVE && _held.Count > 0) Still(false);
+            return IntPtr.Zero;
+        }
+
+        void Still(bool on)
+        {
+            if (!on)
+            {
+                foreach (var e in _held) e.CacheMode = null;
+                _held.Clear();
+                return;
+            }
+            if (Parent is not Panel p) return;
+            foreach (UIElement e in p.Children)
+                if (e != this && e.CacheMode == null)
+                {
+                    e.CacheMode = new BitmapCache { SnapsToDevicePixels = true };
+                    _held.Add(e);
+                }
+        }
         void OnClosed(object s, EventArgs e) { Unhook(); }
         void OnChanged() { Update(); }
 
-        /// <summary>Show the part of the blurred wallpaper that is behind this element now.</summary>
+        /// <summary>
+        /// Which monitors lie under a window (device pixels) and which part of the window each covers - a window on one monitor is one
+        /// piece covering it all; across two, two; half off the screen, a piece smaller than the window (the rest is on no monitor).
+        /// </summary>
+        public static List<(int Monitor, Int32Rect Part)> Pieces(Int32Rect window, IReadOnlyList<Int32Rect> monitors)
+        {
+            var list = new List<(int, Int32Rect)>();
+            for (int i = 0; i < monitors.Count; i++)
+            {
+                var m = monitors[i];
+                int l = Math.Max(window.X, m.X), t = Math.Max(window.Y, m.Y);
+                int r = Math.Min(window.X + window.Width, m.X + m.Width), b = Math.Min(window.Y + window.Height, m.Y + m.Height);
+                if (r > l && b > t) list.Add((i, new Int32Rect(l, t, r - l, b - t)));
+            }
+            return list;
+        }
+
+        // the monitors, read again every couple of seconds (not at every step of a drag)
+        static List<Backdrop.Monitor> _monitors;
+        static DateTime _monitorsAt;
+        static List<Backdrop.Monitor> MonitorsNow()
+        {
+            if (_monitors == null || DateTime.UtcNow - _monitorsAt > TimeSpan.FromSeconds(2)) { _monitors = Backdrop.Monitors(); _monitorsAt = DateTime.UtcNow; }
+            return _monitors;
+        }
+
+        /// <summary>
+        /// Show the part of the blurred wallpaper that is behind this element now. On one monitor: that monitor's picture, the part behind
+        /// it. Across monitors, or partly off the screen: each monitor's own picture where that monitor is - it used to be one monitor's
+        /// picture held inside its edges, so the glass stopped moving with a window dragged past an edge or onto another monitor.
+        /// </summary>
         public void Update()
         {
             if (Visibility != Visibility.Visible || ActualWidth < 1 || ActualHeight < 1) return;
@@ -498,13 +568,18 @@ namespace vSuite.Ui
                 Point br = PointToScreen(new Point(ActualWidth, ActualHeight));
                 double x = Math.Min(tl.X, br.X), y = Math.Min(tl.Y, br.Y);
                 double w = Math.Abs(br.X - tl.X), h = Math.Abs(br.Y - tl.Y);
-                Backdrop.Monitor m = Backdrop.MonitorAt((int)(x + w / 2), (int)(y + h / 2));
-                if (m == null) return;
+                var monitors = MonitorsNow();
+                var window = new Int32Rect((int)Math.Round(x), (int)Math.Round(y), Math.Max(1, (int)Math.Round(w)), Math.Max(1, (int)Math.Round(h)));
+                var pieces = Pieces(window, monitors.ConvertAll(mo => mo.Bounds));
+                bool whole = pieces.Count == 1 && pieces[0].Part.Width == window.Width && pieces[0].Part.Height == window.Height;
+                if (!whole) { Across(window, monitors, pieces); return; }
+
+                Backdrop.Monitor m = monitors[pieces[0].Monitor];
                 BitmapSource pic = Backdrop.For(m, _mode);
                 if (pic == null) { Background = Backdrop.DesktopColour(); return; }   // a plain-colour desktop: that colour
                 double fx = pic.PixelWidth / (double)Math.Max(1, m.Bounds.Width), fy = pic.PixelHeight / (double)Math.Max(1, m.Bounds.Height);
                 var view = new Rect((x - m.Bounds.X) * fx, (y - m.Bounds.Y) * fy, Math.Max(1, w * fx), Math.Max(1, h * fy));
-                // keep inside the picture (a window can reach past the monitor's edge)
+                // (wholly on this monitor - only rounding can reach past the picture's edge)
                 if (view.Width > pic.PixelWidth) view.Width = pic.PixelWidth;
                 if (view.Height > pic.PixelHeight) view.Height = pic.PixelHeight;
                 if (view.X < 0) view.X = 0;
@@ -521,6 +596,33 @@ namespace vSuite.Ui
                 if (brush.Viewbox != view) brush.Viewbox = view;
             }
             catch (Exception ex) { Log.Write("Glass: " + ex.Message); }
+        }
+
+        /// <summary>
+        /// A window across monitors, or partly off the screen: each monitor's picture drawn where that monitor is behind it (the window's
+        /// own device pixels, 0,0 = its top-left), the desktop colour under the rest (on no monitor - not seen).
+        /// </summary>
+        void Across(Int32Rect window, List<Backdrop.Monitor> monitors, List<(int Monitor, Int32Rect Part)> pieces)
+        {
+            var dg = new DrawingGroup();
+            RenderOptions.SetBitmapScalingMode(dg, BitmapScalingMode.HighQuality);
+            using (DrawingContext dc = dg.Open())
+            {
+                dc.DrawRectangle(Backdrop.DesktopColour(), null, new Rect(0, 0, window.Width, window.Height));
+                foreach (var (i, part) in pieces)
+                {
+                    var m = monitors[i];
+                    BitmapSource pic = Backdrop.For(m, _mode);
+                    if (pic == null) continue;      // (a plain-colour desktop there: the colour under it already)
+                    dc.PushClip(new RectangleGeometry(new Rect(part.X - window.X, part.Y - window.Y, part.Width, part.Height)));
+                    dc.DrawImage(pic, new Rect(m.Bounds.X - window.X, m.Bounds.Y - window.Y, m.Bounds.Width, m.Bounds.Height));
+                    dc.Pop();
+                }
+            }
+            dg.Freeze();
+            var brush = new DrawingBrush(dg) { Stretch = Stretch.Fill, ViewboxUnits = BrushMappingMode.Absolute, Viewbox = new Rect(0, 0, window.Width, window.Height) };
+            brush.Freeze();
+            Background = brush;
         }
     }
 }

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.42
+
+- Glass: a window across two monitors shows each one's wallpaper where that monitor is, and one dragged past a screen's edge keeps its glass moving with it (it stopped at the edge).
+- Glass: while its window is dragged, the content over the glass is held as a picture and only the glass is drawn again - big windows drag smoothly.
+
 ## 1.0.41
 
 - Glass: the wallpaper's file is looked at off the UI thread - a wallpaper on a network share that has gone away no longer holds every window for seconds, every 4 seconds.
