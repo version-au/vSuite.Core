@@ -55,6 +55,75 @@ namespace vSuite.Tests
             if (failed != null) throw new Exception(failed.Message, failed);
         }
 
+        [Fact]
+        public void a_drawn_maximise_box_made_again_keeps_working()
+        {
+            Exception failed = null;
+            var t = new Thread(() =>
+            {
+                try { RunDrawn(); }
+                catch (Exception ex) { failed = ex; }
+            });
+            t.SetApartmentState(ApartmentState.STA);
+            t.Start();
+            t.Join();
+            if (failed != null) throw new Exception(failed.Message, failed);
+        }
+
+        /// <summary>vTerm's strip: Borders (not Buttons), its own click and hover colours, the boxes made again when the window changes.</summary>
+        static void RunDrawn()
+        {
+            SnapLayouts.IsOnOverride = () => true;
+            try
+            {
+                int clicks = 0;
+                var lit = new System.Collections.Generic.Dictionary<FrameworkElement, string>();
+                var holder = new Border { Width = 46, Height = 36, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top };
+                WindowChrome.SetIsHitTestVisibleInChrome(holder, true);
+                Border Box() { return new Border { Width = 46, Height = 36, Background = Brushes.Transparent }; }
+                holder.Child = Box();
+                var w = new Window
+                {
+                    Width = 400, Height = 200, Left = -20000, Top = -20000, WindowStartupLocation = WindowStartupLocation.Manual,
+                    ShowActivated = false, ShowInTaskbar = false, Content = new Grid { Children = { holder } },
+                };
+                WindowChrome.SetWindowChrome(w, new WindowChrome { CaptionHeight = 36, ResizeBorderThickness = new Thickness(6), GlassFrameThickness = new Thickness(0), UseAeroCaptionButtons = false });
+                SnapLayouts.Attach(w, () => holder.Child as FrameworkElement, () => clicks++,
+                    (e, hot, pressed) => lit[e] = pressed ? "pressed" : hot ? "hot" : "plain");
+                w.Show();
+                Settle();
+                var hwnd = new WindowInteropHelper(w).Handle;
+                Point c = holder.PointToScreen(new Point(23, 18));
+                IntPtr on = At((int)c.X, (int)c.Y);
+
+                var first = (FrameworkElement)holder.Child;
+                Assert.Equal(HTMAXBUTTON, SendMessage(hwnd, WM_NCHITTEST, IntPtr.Zero, on).ToInt32());
+                Assert.Equal("hot", lit[first]);
+                SendMessage(hwnd, WM_NCLBUTTONDOWN, new IntPtr(HTMAXBUTTON), on);
+                Assert.Equal("pressed", lit[first]);
+                SendMessage(hwnd, WM_NCLBUTTONUP, new IntPtr(HTMAXBUTTON), on);
+                Settle();
+                Assert.Equal(1, clicks);
+
+                // the window made its buttons again (maximised: a new glyph) with the pointer still there
+                holder.Child = Box();
+                Settle();
+                var second = (FrameworkElement)holder.Child;
+                Assert.Equal(HTMAXBUTTON, SendMessage(hwnd, WM_NCHITTEST, IntPtr.Zero, on).ToInt32());
+                Assert.Equal("plain", lit[first]);
+                Assert.Equal("hot", lit[second]);
+                SendMessage(hwnd, WM_NCMOUSELEAVE, IntPtr.Zero, IntPtr.Zero);
+                Assert.Equal("plain", lit[second]);
+
+                // no maximise box shown (vTerm's drop-down): the window's own answer
+                holder.Child = null;
+                Settle();
+                Assert.NotEqual(HTMAXBUTTON, SendMessage(hwnd, WM_NCHITTEST, IntPtr.Zero, on).ToInt32());
+                w.Close();
+            }
+            finally { SnapLayouts.IsOnOverride = null; }
+        }
+
         static void Run()
         {
             bool on = true;

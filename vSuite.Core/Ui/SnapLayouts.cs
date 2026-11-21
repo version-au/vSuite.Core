@@ -30,8 +30,18 @@ namespace vSuite.Ui
         /// </summary>
         public static void Attach(Window window, ButtonBase maximise)
         {
+            if (maximise != null) Attach(window, () => maximise);
+        }
+
+        /// <summary>
+        /// The same for a maximise "button" that isn't a WPF Button, or is made again now and then (vTerm's strip): `maximise` gives the
+        /// one shown now (null = none); `click` maximises / restores (null = the Button's own Click); `look(element, hot, pressed)` draws
+        /// it hovered / pressed / plain (null = vx.Hover / vx.Active as its Background, a Control's).
+        /// </summary>
+        public static void Attach(Window window, Func<FrameworkElement> maximise, Action click = null, Action<FrameworkElement, bool, bool> look = null)
+        {
             if (window == null || maximise == null || Hooks.TryGetValue(window, out _)) return;
-            var h = new Hook(window, maximise);
+            var h = new Hook(window, maximise, click, look);
             Hooks.Add(window, h);
             // after WindowChrome's own hook (added when the window's handle is made): HwndSource asks the newest hook first, and
             // WindowChrome answers every hit test itself
@@ -90,11 +100,20 @@ namespace vSuite.Ui
         sealed class Hook
         {
             readonly Window _w;
-            readonly ButtonBase _b;
+            readonly Func<FrameworkElement> _find;
+            readonly Action _click;
+            readonly Action<FrameworkElement, bool, bool> _look;
             HwndSourceHook _proc;      // kept here: HwndSource holds its hooks weakly
-            bool _hot, _pressed;
+            FrameworkElement _hot;     // the button the pointer is on (Windows has the mouse), or null
+            bool _pressed;
 
-            public Hook(Window w, ButtonBase b) { _w = w; _b = b; }
+            public Hook(Window w, Func<FrameworkElement> find, Action click, Action<FrameworkElement, bool, bool> look)
+            {
+                _w = w;
+                _find = find;
+                _click = click;
+                _look = look ?? DefaultLook;
+            }
 
             public void Start()
             {
@@ -111,33 +130,43 @@ namespace vSuite.Ui
                 switch (msg)
                 {
                     case WM_NCHITTEST:
-                        if (IsOn && _b.IsEnabled && Over(_b, (short)((long)lParam & 0xFFFF), (short)(((long)lParam >> 16) & 0xFFFF)))
+                        FrameworkElement b = IsOn ? _find() : null;
+                        if (b != null && b.IsEnabled && Over(b, (short)((long)lParam & 0xFFFF), (short)(((long)lParam >> 16) & 0xFFFF)))
                         {
-                            if (!_hot) { _hot = true; Track(hwnd); Look(); }
+                            if (_hot != b)
+                            {
+                                // a button made again while the pointer was on it (vTerm's strip): the old one plain, the new one hovered
+                                if (_hot != null) Draw(_hot, false, false);
+                                else Track(hwnd);
+                                _hot = b;
+                                _pressed = false;
+                                Draw(b, true, false);
+                            }
                             handled = true;
                             return new IntPtr(HTMAXBUTTON);
                         }
-                        if (_hot) Leave();
+                        if (_hot != null) Leave();
                         break;
                     case WM_NCMOUSEMOVE:
-                        if (_hot && wParam.ToInt64() != HTMAXBUTTON) Leave();
+                        if (_hot != null && wParam.ToInt64() != HTMAXBUTTON) Leave();
                         break;
                     case WM_NCMOUSELEAVE:
-                        if (_hot) Leave();
+                        if (_hot != null) Leave();
                         break;
                     case WM_NCLBUTTONDOWN:
                     case WM_NCLBUTTONDBLCLK:
                         // never to Windows: it would draw its own old-style button over ours while held
-                        if (wParam.ToInt64() == HTMAXBUTTON && _hot) { _pressed = true; Look(); handled = true; return IntPtr.Zero; }
+                        if (wParam.ToInt64() == HTMAXBUTTON && _hot != null) { _pressed = true; Draw(_hot, true, true); handled = true; return IntPtr.Zero; }
                         break;
                     case WM_NCLBUTTONUP:
-                        if (wParam.ToInt64() == HTMAXBUTTON && _hot)
+                        if (wParam.ToInt64() == HTMAXBUTTON && _hot != null)
                         {
                             bool click = _pressed;
+                            var on = _hot;
                             _pressed = false;
-                            Look();
+                            Draw(on, true, false);
                             handled = true;
-                            if (click) _b.Dispatcher.BeginInvoke(new Action(() => _b.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent, _b))));
+                            if (click) on.Dispatcher.BeginInvoke(new Action(() => Click(on)));
                             return IntPtr.Zero;
                         }
                         break;
@@ -145,20 +174,33 @@ namespace vSuite.Ui
                 return IntPtr.Zero;
             }
 
-            void Leave()
+            void Click(FrameworkElement on)
             {
-                _hot = false;
-                _pressed = false;
-                Look();
+                if (_click != null) _click();
+                else if (on is ButtonBase bb) bb.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent, bb));
             }
 
-            /// <summary>Hover / pressed as the button's own style shows them (vx.Hover / vx.Active); none = back to the style.</summary>
-            void Look()
+            void Leave()
             {
-                if (!_hot) { _b.ClearValue(Control.BackgroundProperty); return; }
-                var brush = _b.TryFindResource(_pressed ? "vx.Active" : "vx.Hover") as Brush
-                            ?? new SolidColorBrush(Color.FromArgb(_pressed ? (byte)0x33 : (byte)0x1F, 0x80, 0x80, 0x80));
-                _b.SetValue(Control.BackgroundProperty, brush);
+                var was = _hot;
+                _hot = null;
+                _pressed = false;
+                Draw(was, false, false);
+            }
+
+            void Draw(FrameworkElement e, bool hot, bool pressed)
+            {
+                try { _look(e, hot, pressed); } catch { }
+            }
+
+            /// <summary>Hover / pressed as vSuite's button styles show them (vx.Hover / vx.Active); plain = back to the style.</summary>
+            static void DefaultLook(FrameworkElement e, bool hot, bool pressed)
+            {
+                if (!(e is Control c)) return;
+                if (!hot) { c.ClearValue(Control.BackgroundProperty); return; }
+                var brush = c.TryFindResource(pressed ? "vx.Active" : "vx.Hover") as Brush
+                            ?? new SolidColorBrush(Color.FromArgb(pressed ? (byte)0x33 : (byte)0x1F, 0x80, 0x80, 0x80));
+                c.SetValue(Control.BackgroundProperty, brush);
             }
 
             /// <summary>Ask Windows for WM_NCMOUSELEAVE when the pointer leaves the button's spot.</summary>

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.46
+
+- SnapLayouts: a maximise button that isn't a WPF Button, or is made again (vTerm's strip) - its own click and hover look.
+
 ## 1.0.45
 
 - SnapLayouts: Windows' setting is read (1.0.44 never read it, so the menu never showed).
