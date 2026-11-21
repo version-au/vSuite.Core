@@ -29,6 +29,8 @@ namespace vSuite.Ui
         public static event Action Changed;
 
         static readonly Dictionary<string, BitmapSource> Cache = new Dictionary<string, BitmapSource>(StringComparer.OrdinalIgnoreCase);
+        // the whole desktop's picture per mode: every monitor's in its place, and where it lies (device pixels)
+        static readonly Dictionary<string, (BitmapSource Pic, Int32Rect Desktop)> Desktops = new Dictionary<string, (BitmapSource, Int32Rect)>(StringComparer.OrdinalIgnoreCase);
         static string _key;
         static ImageBrush _noise;
         static DispatcherTimer _timer;
@@ -216,6 +218,7 @@ namespace vSuite.Ui
             bool first = _key == null;
             _key = k;
             Cache.Clear();
+            Desktops.Clear();
             _colour = null;
             if (!first) { Action a = Changed; if (a != null) a(); }
         }
@@ -231,6 +234,53 @@ namespace vSuite.Ui
                 _timer.Start();
             }
             else if (_users == 0 && _timer != null) { _timer.Stop(); _timer = null; }
+        }
+
+        /// <summary>The rectangle around all the monitors (device pixels).</summary>
+        public static Int32Rect Union(IReadOnlyList<Int32Rect> monitors)
+        {
+            if (monitors.Count == 0) return Int32Rect.Empty;
+            int l = int.MaxValue, t = int.MaxValue, r = int.MinValue, b = int.MinValue;
+            foreach (var m in monitors) { l = Math.Min(l, m.X); t = Math.Min(t, m.Y); r = Math.Max(r, m.X + m.Width); b = Math.Max(b, m.Y + m.Height); }
+            return new Int32Rect(l, t, r - l, b - t);
+        }
+
+        /// <summary>
+        /// The whole desktop's picture for a mode - every monitor's (blurred, or as it is for "Clear") drawn where that monitor is, at the
+        /// same small scale, the desktop colour between them - and the rectangle it covers. A glass shows the part behind its window: on one
+        /// monitor, across two, or partly off the screen, always the same cheap step. Null picture: no wallpaper anywhere.
+        /// </summary>
+        internal static (BitmapSource Pic, Int32Rect Desktop) Desktop(string mode)
+        {
+            if (_key == null) Check();
+            if (Desktops.TryGetValue(mode, out var have)) return have;
+            var monitors = Monitors();
+            var u = Union(monitors.ConvertAll(m => m.Bounds));
+            if (u.IsEmpty || u.Width <= 0 || u.Height <= 0) return (null, u);
+            double s = ShrinkFor(mode);
+            int pw = Math.Max(8, (int)Math.Round(u.Width * s)), ph = Math.Max(8, (int)Math.Round(u.Height * s));
+            bool any = false;
+            var dv = new DrawingVisual();
+            using (DrawingContext dc = dv.RenderOpen())
+            {
+                dc.DrawRectangle(DesktopColour(), null, new Rect(0, 0, pw, ph));
+                foreach (var m in monitors)
+                {
+                    var r = new Rect((m.Bounds.X - u.X) * s, (m.Bounds.Y - u.Y) * s, m.Bounds.Width * s, m.Bounds.Height * s);
+                    BitmapSource pic = For(m, mode);
+                    if (pic != null) { dc.DrawImage(pic, r); any = true; }
+                }
+            }
+            BitmapSource all = null;
+            if (any)
+            {
+                var rtb = new RenderTargetBitmap(pw, ph, 96, 96, PixelFormats.Pbgra32);
+                rtb.Render(dv);
+                rtb.Freeze();
+                all = rtb;
+            }
+            Desktops[mode] = (all, u);
+            return (all, u);
         }
 
         /// <summary>The wallpaper of a monitor for "Blur" / "Acrylic" (Frosted) - blurred, 1/8 of its pixel size - or "Clear" (half size, not blurred); null when there's no picture.</summary>
@@ -528,35 +578,19 @@ namespace vSuite.Ui
         void OnChanged() { Update(); }
 
         /// <summary>
-        /// Which monitors lie under a window (device pixels) and which part of the window each covers - a window on one monitor is one
-        /// piece covering it all; across two, two; half off the screen, a piece smaller than the window (the rest is on no monitor).
+        /// The part of the desktop picture behind a window (device pixels), in the picture's own pixels. Not kept inside the picture: a
+        /// window past the desktop's edge shows the picture's edge moving with it, the rest (off every screen) is nothing - not seen.
         /// </summary>
-        public static List<(int Monitor, Int32Rect Part)> Pieces(Int32Rect window, IReadOnlyList<Int32Rect> monitors)
+        public static Rect ViewFor(Rect window, Int32Rect desktop, int pictureWidth, int pictureHeight)
         {
-            var list = new List<(int, Int32Rect)>();
-            for (int i = 0; i < monitors.Count; i++)
-            {
-                var m = monitors[i];
-                int l = Math.Max(window.X, m.X), t = Math.Max(window.Y, m.Y);
-                int r = Math.Min(window.X + window.Width, m.X + m.Width), b = Math.Min(window.Y + window.Height, m.Y + m.Height);
-                if (r > l && b > t) list.Add((i, new Int32Rect(l, t, r - l, b - t)));
-            }
-            return list;
-        }
-
-        // the monitors, read again every couple of seconds (not at every step of a drag)
-        static List<Backdrop.Monitor> _monitors;
-        static DateTime _monitorsAt;
-        static List<Backdrop.Monitor> MonitorsNow()
-        {
-            if (_monitors == null || DateTime.UtcNow - _monitorsAt > TimeSpan.FromSeconds(2)) { _monitors = Backdrop.Monitors(); _monitorsAt = DateTime.UtcNow; }
-            return _monitors;
+            double fx = pictureWidth / (double)Math.Max(1, desktop.Width), fy = pictureHeight / (double)Math.Max(1, desktop.Height);
+            return new Rect((window.X - desktop.X) * fx, (window.Y - desktop.Y) * fy, Math.Max(1, window.Width * fx), Math.Max(1, window.Height * fy));
         }
 
         /// <summary>
-        /// Show the part of the blurred wallpaper that is behind this element now. On one monitor: that monitor's picture, the part behind
-        /// it. Across monitors, or partly off the screen: each monitor's own picture where that monitor is - it used to be one monitor's
-        /// picture held inside its edges, so the glass stopped moving with a window dragged past an edge or onto another monitor.
+        /// Show the part of the wallpaper that is behind this element now: the part of the whole desktop's picture (Backdrop.Desktop) behind
+        /// it - so across two monitors each one's wallpaper is where that monitor is, and past a screen's edge it keeps moving with the
+        /// window. (It was one monitor's picture, held inside that monitor's edges.)
         /// </summary>
         public void Update()
         {
@@ -568,24 +602,9 @@ namespace vSuite.Ui
                 Point br = PointToScreen(new Point(ActualWidth, ActualHeight));
                 double x = Math.Min(tl.X, br.X), y = Math.Min(tl.Y, br.Y);
                 double w = Math.Abs(br.X - tl.X), h = Math.Abs(br.Y - tl.Y);
-                var monitors = MonitorsNow();
-                var window = new Int32Rect((int)Math.Round(x), (int)Math.Round(y), Math.Max(1, (int)Math.Round(w)), Math.Max(1, (int)Math.Round(h)));
-                var pieces = Pieces(window, monitors.ConvertAll(mo => mo.Bounds));
-                bool whole = pieces.Count == 1 && pieces[0].Part.Width == window.Width && pieces[0].Part.Height == window.Height;
-                if (!whole) { Across(window, monitors, pieces); return; }
-
-                Backdrop.Monitor m = monitors[pieces[0].Monitor];
-                BitmapSource pic = Backdrop.For(m, _mode);
-                if (pic == null) { Background = Backdrop.DesktopColour(); return; }   // a plain-colour desktop: that colour
-                double fx = pic.PixelWidth / (double)Math.Max(1, m.Bounds.Width), fy = pic.PixelHeight / (double)Math.Max(1, m.Bounds.Height);
-                var view = new Rect((x - m.Bounds.X) * fx, (y - m.Bounds.Y) * fy, Math.Max(1, w * fx), Math.Max(1, h * fy));
-                // (wholly on this monitor - only rounding can reach past the picture's edge)
-                if (view.Width > pic.PixelWidth) view.Width = pic.PixelWidth;
-                if (view.Height > pic.PixelHeight) view.Height = pic.PixelHeight;
-                if (view.X < 0) view.X = 0;
-                if (view.Y < 0) view.Y = 0;
-                if (view.Right > pic.PixelWidth) view.X = Math.Max(0, pic.PixelWidth - view.Width);
-                if (view.Bottom > pic.PixelHeight) view.Y = Math.Max(0, pic.PixelHeight - view.Height);
+                var (pic, desktop) = Backdrop.Desktop(_mode);
+                if (pic == null) { Background = Backdrop.DesktopColour(); return; }   // no wallpaper picture: the desktop's colour
+                var view = ViewFor(new Rect(x, y, w, h), desktop, pic.PixelWidth, pic.PixelHeight);
                 var brush = Background as ImageBrush;
                 if (brush == null || brush.ImageSource != pic || brush.IsFrozen)
                 {
@@ -596,33 +615,6 @@ namespace vSuite.Ui
                 if (brush.Viewbox != view) brush.Viewbox = view;
             }
             catch (Exception ex) { Log.Write("Glass: " + ex.Message); }
-        }
-
-        /// <summary>
-        /// A window across monitors, or partly off the screen: each monitor's picture drawn where that monitor is behind it (the window's
-        /// own device pixels, 0,0 = its top-left), the desktop colour under the rest (on no monitor - not seen).
-        /// </summary>
-        void Across(Int32Rect window, List<Backdrop.Monitor> monitors, List<(int Monitor, Int32Rect Part)> pieces)
-        {
-            var dg = new DrawingGroup();
-            RenderOptions.SetBitmapScalingMode(dg, BitmapScalingMode.HighQuality);
-            using (DrawingContext dc = dg.Open())
-            {
-                dc.DrawRectangle(Backdrop.DesktopColour(), null, new Rect(0, 0, window.Width, window.Height));
-                foreach (var (i, part) in pieces)
-                {
-                    var m = monitors[i];
-                    BitmapSource pic = Backdrop.For(m, _mode);
-                    if (pic == null) continue;      // (a plain-colour desktop there: the colour under it already)
-                    dc.PushClip(new RectangleGeometry(new Rect(part.X - window.X, part.Y - window.Y, part.Width, part.Height)));
-                    dc.DrawImage(pic, new Rect(m.Bounds.X - window.X, m.Bounds.Y - window.Y, m.Bounds.Width, m.Bounds.Height));
-                    dc.Pop();
-                }
-            }
-            dg.Freeze();
-            var brush = new DrawingBrush(dg) { Stretch = Stretch.Fill, ViewboxUnits = BrushMappingMode.Absolute, Viewbox = new Rect(0, 0, window.Width, window.Height) };
-            brush.Freeze();
-            Background = brush;
         }
     }
 }
