@@ -16,6 +16,7 @@ public class ActivityTests : IDisposable
         public Dictionary<string, string> Notify { get; set; } = new();
         public string GotifyUrl { get; set; }
         public string GotifyToken { get; set; }
+        public string DiscordWebhook { get; set; }
     }
 
     static readonly NotifyGroup[] Groups = { new("down", "A host stops answering", "", "both"), new("changes", "A change", "", "off"), new("news", "News", "", "vshell") };
@@ -117,5 +118,62 @@ public class ActivityTests : IDisposable
         s.GotifyUrl = "";
         Assert.False(n.GotifyReady());
         await Assert.ThrowsAsync<HostProblem>(() => n.Gotify("x", null));
+    }
+
+    [Fact]
+    public void Choices_from_before_discord_keep_their_meaning_and_new_ones_mix()
+    {
+        Assert.Equal(NotifyTo.Gotify | NotifyTo.Discord | NotifyTo.VShell, Notifier.Parse("both"));
+        Assert.Equal(NotifyTo.Gotify | NotifyTo.Discord, Notifier.Parse("gotify"));
+        Assert.Equal(NotifyTo.VShell, Notifier.Parse("vshell"));
+        Assert.Equal(NotifyTo.None, Notifier.Parse("off"));
+        Assert.Null(Notifier.Parse("nonsense"));
+        Assert.Null(Notifier.Parse("to:gotify,pigeon"));
+        Assert.Equal("to:discord,vshell", Notifier.Write(NotifyTo.VShell | NotifyTo.Discord));
+        Assert.Equal("off", Notifier.Write(NotifyTo.None));
+        Assert.Equal(NotifyTo.Gotify, Notifier.Parse(Notifier.Write(NotifyTo.Gotify)));
+
+        var s = new Settings();
+        var n = new Notifier("vTest", Groups, () => s);
+        Assert.Equal(NotifyTo.Gotify | NotifyTo.Discord | NotifyTo.VShell, n.To("down"));     // default "both"
+        n.Set("down", NotifyTo.Discord);
+        Assert.Equal("to:discord", s.Notify["down"]);
+        Assert.Equal(NotifyTo.Discord, n.To("down"));
+        var e = new ActivityEvent { Group = "down", ToVShell = true };
+        n.Mark(e);
+        Assert.False(e.ToVShell);
+    }
+
+    [Fact]
+    public async Task Discord_gets_the_app_name_and_red_for_a_problem()
+    {
+        Assert.NotNull(Notifier.DiscordProblem("http://discord.com/api/webhooks/1/x"));
+        Assert.NotNull(Notifier.DiscordProblem("https://example.com/api/webhooks/1/x"));
+        Assert.Null(Notifier.DiscordProblem("https://discord.com/api/webhooks/123/abc"));
+
+        var s = new Settings { DiscordWebhook = "https://discord.com/api/webhooks/123/abc" };
+        var fake = new FakeDiscord();
+        var n = new Notifier("vTest", Groups, () => s, new HttpClient(fake));
+        Assert.True(n.DiscordReady());
+        await n.Discord("Web is down", "Not answering", problem: true);
+        Assert.Equal("https://discord.com/api/webhooks/123/abc", fake.Got[0].Url);
+        Assert.Contains("\"username\":\"vTest\"", fake.Got[0].Body);
+        Assert.Contains("\"title\":\"Web is down\"", fake.Got[0].Body);
+        Assert.Contains("\"color\":" + 0xE74C3C, fake.Got[0].Body);
+
+        fake.Answer = HttpStatusCode.NotFound;
+        var ex = await Assert.ThrowsAsync<HostProblem>(() => n.Discord("x", null));
+        Assert.Contains("deleted", ex.Message);
+    }
+
+    sealed class FakeDiscord : HttpMessageHandler
+    {
+        public List<(string Url, string Body)> Got { get; } = new();
+        public HttpStatusCode Answer { get; set; } = HttpStatusCode.NoContent;
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage r, CancellationToken ct)
+        {
+            Got.Add((r.RequestUri.ToString(), await r.Content.ReadAsStringAsync(ct)));
+            return new HttpResponseMessage(Answer);
+        }
     }
 }

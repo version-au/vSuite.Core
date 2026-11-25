@@ -30,7 +30,8 @@ app then moves its submodule forward (`git -C vSuite.Core pull` + commit in the 
   CPU, never a user / password / key; vDeploy's older "vdeploy-hosts" reads too) - `Json`, `Read` (problems in words), `FileName`, `Same`.
   `Activity.cs` (1.0.47, V: shared instead of copied in each app): `ActivityEvent` / `ActivityLog<T>` / `ActivityLog` (activity.json,
   1,000 newest first, outputs of the newest 50 in activity/<id>.log; reads vDeploy's older oldest-first file) and `Notifier` /
-  `NotifyGroup` / `INotifySettings` / `INotifyEvent` (routes off / gotify / vshell / both, Gotify). Tests: `vSuite.Server.Tests`.
+  `NotifyGroup` / `INotifySettings` / `INotifyEvent` (1.0.48: each group to any of Gotify, Discord, vShell - `NotifyTo` flags, stored
+  "to:gotify,discord,vshell"; the older words still read). Tests: `vSuite.Server.Tests`.
 - `vSuite.Web` (1.0.32-1.0.35, Razor class library on vSuite.Server): the server apps' pages - a vSuite window in a browser.
   - `HostsCard` (1.0.35): Options > General > Hosts in vDeploy, vPatch and vTrace - export the ticked hosts (a data: link, no endpoint)
     and import a file; the app gives `ImportAction` (per host not here yet) and optionally `ImportAll`. Icons added: upload, pc, server,

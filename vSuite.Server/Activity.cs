@@ -168,31 +168,39 @@ public sealed class ActivityLog : ActivityLog<ActivityEvent>
     public ActivityLog(string path = null) : base(path) { }
 }
 
-/// <summary>The settings the Notifier reads: where each group goes, and Gotify (the token kept with <see cref="Secrets"/>).</summary>
+/// <summary>The settings the Notifier reads: where each group goes, Gotify and Discord (secrets kept with <see cref="Secrets"/>).</summary>
 public interface INotifySettings
 {
-    /// <summary>Group key -> route ("off", "gotify", "vshell", "both"); a group not in it has its default.</summary>
+    /// <summary>Group key -> where it goes (<see cref="Notifier.Write"/>: "off", "to:gotify,discord,vshell"; older "gotify" / "vshell" /
+    /// "both" still read); a group not in it has its default.</summary>
     Dictionary<string, string> Notify { get; set; }
     string GotifyUrl { get; set; }
     /// <summary>Protected (<see cref="Secrets.Protect"/>).</summary>
     string GotifyToken { get; set; }
+    /// <summary>A Discord channel's webhook address (it holds the webhook's token) - protected (<see cref="Secrets.Protect"/>).</summary>
+    string DiscordWebhook { get; set; }
 }
 
-/// <summary>A kind of notification: its key, what Options › Notifications says about it, and where it goes until you choose.</summary>
+/// <summary>Where a notification goes - any mix.</summary>
+[Flags]
+public enum NotifyTo { None = 0, Gotify = 1, Discord = 2, VShell = 4 }
+
+/// <summary>
+/// A kind of notification: its key, what Options › Notifications says about it, and where it goes until you choose ("both" = Gotify,
+/// Discord and vShell; "gotify" = Gotify and Discord; "vshell"; "off").
+/// </summary>
 public sealed record NotifyGroup(string Key, string Title, string Hint, string Default);
 
 /// <summary>
-/// Where each kind of notification goes: off, Gotify, vShell (its plugin reads the events marked ToVShell) or both. Every event is on
-/// the Activity page whatever is chosen. Options › Notifications is <c>vSuite.Web.Parts.NotificationsOptions</c>.
+/// Where each kind of notification goes: Gotify, Discord, vShell (its plugin reads the events marked ToVShell) - any of them, or none.
+/// Every event is on the Activity page whatever is chosen. Options › Notifications is <c>vSuite.Web.Parts.NotificationsOptions</c>.
 /// </summary>
 public sealed class Notifier
 {
-    public static readonly KeyValuePair<string, string>[] Routes = { new("off", "Off"), new("gotify", "Gotify"), new("vshell", "vShell"), new("both", "Both") };
-
     readonly Func<INotifySettings> _settings;
     readonly HttpClient _http;
 
-    /// <summary>The app's name - Gotify's titles start "vProxy: ".</summary>
+    /// <summary>The app's name - Gotify's titles start "vProxy: ", Discord's messages come from "vProxy".</summary>
     public string App { get; }
     /// <summary>The app's groups, in the order Options lists them.</summary>
     public IReadOnlyList<NotifyGroup> Groups { get; }
@@ -205,40 +213,119 @@ public sealed class Notifier
         _http = http ?? new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
     }
 
-    /// <summary>Hooks it to a log: marks ToVShell before an event is saved, sends to Gotify after.</summary>
+    /// <summary>Hooks it to a log: marks ToVShell before an event is saved, sends to Gotify / Discord after.</summary>
     public void Watch<T>(ActivityLog<T> log) where T : ActivityEvent
     {
         log.Before = e => Mark(e);
         log.Written += e => Send(e);
     }
 
-    public static string RouteOf(INotifySettings s, IReadOnlyList<NotifyGroup> groups, string group)
+    // ---------- where a group goes ----------
+
+    /// <summary>A stored choice -> where it goes; null for nonsense. The words from before Discord (1.0.47) keep their meaning, with
+    /// Discord beside Gotify - it only sends once a webhook is set.</summary>
+    public static NotifyTo? Parse(string route)
     {
-        if (group == null) return "off";
-        if (s?.Notify != null && s.Notify.TryGetValue(group, out var r) && Routes.Any(x => x.Key == r)) return r;
-        return groups.FirstOrDefault(g => g.Key == group)?.Default ?? "off";
+        switch (route)
+        {
+            case null: return null;
+            case "off": return NotifyTo.None;
+            case "both": return NotifyTo.Gotify | NotifyTo.Discord | NotifyTo.VShell;
+            case "gotify": return NotifyTo.Gotify | NotifyTo.Discord;
+            case "vshell": return NotifyTo.VShell;
+        }
+        if (!route.StartsWith("to:")) return null;
+        var to = NotifyTo.None;
+        foreach (string w in route.Substring(3).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            switch (w)
+            {
+                case "gotify": to |= NotifyTo.Gotify; break;
+                case "discord": to |= NotifyTo.Discord; break;
+                case "vshell": to |= NotifyTo.VShell; break;
+                default: return null;
+            }
+        }
+        return to;
+    }
+
+    /// <summary>Where it goes -> what's stored: "off" or "to:gotify,discord,vshell".</summary>
+    public static string Write(NotifyTo to)
+    {
+        if (to == NotifyTo.None) return "off";
+        var w = new List<string>();
+        if (to.HasFlag(NotifyTo.Gotify)) w.Add("gotify");
+        if (to.HasFlag(NotifyTo.Discord)) w.Add("discord");
+        if (to.HasFlag(NotifyTo.VShell)) w.Add("vshell");
+        return "to:" + string.Join(",", w);
+    }
+
+    public static NotifyTo ToOf(INotifySettings s, IReadOnlyList<NotifyGroup> groups, string group)
+    {
+        if (group == null) return NotifyTo.None;
+        if (s?.Notify != null && s.Notify.TryGetValue(group, out var r) && Parse(r) is { } chosen) return chosen;
+        return Parse(groups.FirstOrDefault(g => g.Key == group)?.Default) ?? NotifyTo.None;
     }
 
     /// <summary>Where a group goes now.</summary>
+    public NotifyTo To(string group) { return ToOf(_settings(), Groups, group); }
+
+    /// <summary>Changes where a group goes (the caller saves the settings).</summary>
+    public void Set(string group, NotifyTo to)
+    {
+        var s = _settings();
+        s.Notify ??= new();
+        s.Notify[group] = Write(to);
+    }
+
+    /// <summary>The stored word for a group (its default when it isn't set) - as before 1.0.48, for apps' own checks.</summary>
+    public static string RouteOf(INotifySettings s, IReadOnlyList<NotifyGroup> groups, string group)
+    {
+        if (group == null) return "off";
+        if (s?.Notify != null && s.Notify.TryGetValue(group, out var r) && Parse(r) != null) return r;
+        return groups.FirstOrDefault(g => g.Key == group)?.Default ?? "off";
+    }
+
     public string RouteOf(string group) { return RouteOf(_settings(), Groups, group); }
 
-    /// <summary>Before an event is saved: does vShell show it?</summary>
-    public void Mark(INotifyEvent e) { e.ToVShell = RouteOf(e.Group) is "vshell" or "both"; }
+    // ---------- sending ----------
 
-    /// <summary>After it's saved: to Gotify when its group goes there and Gotify is set up (in the background - never waits).</summary>
+    /// <summary>Before an event is saved: does vShell show it?</summary>
+    public void Mark(INotifyEvent e) { e.ToVShell = To(e.Group).HasFlag(NotifyTo.VShell); }
+
+    /// <summary>After it's saved: to Gotify and / or Discord when its group goes there and they're set up (in the background - never waits).</summary>
     public void Send(INotifyEvent e)
     {
         var s = _settings();
-        if (RouteOf(s, Groups, e.Group) is not ("gotify" or "both") || !GotifyReady(s)) return;
-        _ = Task.Run(async () =>
-        {
-            try { await Gotify(e.Title, e.Detail, e.Problem ? 8 : 4); }
-            catch (Exception ex) { Log.Write("Gotify didn't take a notification: " + ex.Message); }
-        });
+        var to = ToOf(s, Groups, e.Group);
+        if (to.HasFlag(NotifyTo.Gotify) && GotifyReady(s))
+            _ = Task.Run(async () =>
+            {
+                try { await Gotify(e.Title, e.Detail, e.Problem ? 8 : 4); }
+                catch (Exception ex) { Log.Write("Gotify didn't take a notification: " + ex.Message); }
+            });
+        if (to.HasFlag(NotifyTo.Discord) && DiscordReady(s))
+            _ = Task.Run(async () =>
+            {
+                try { await Discord(e.Title, e.Detail, e.Problem); }
+                catch (Exception ex) { Log.Write("Discord didn't take a notification: " + ex.Message); }
+            });
     }
 
     public static bool GotifyReady(INotifySettings s) { return !string.IsNullOrWhiteSpace(s?.GotifyUrl) && !string.IsNullOrWhiteSpace(s?.GotifyToken); }
     public bool GotifyReady() { return GotifyReady(_settings()); }
+    public static bool DiscordReady(INotifySettings s) { return !string.IsNullOrWhiteSpace(s?.DiscordWebhook); }
+    public bool DiscordReady() { return DiscordReady(_settings()); }
+
+    /// <summary>Is it a Discord webhook's address (https://discord.com/api/webhooks/…)? Null when it is, else why not.</summary>
+    public static string DiscordProblem(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return "Paste the webhook's address.";
+        if (!Uri.TryCreate(url.Trim(), UriKind.Absolute, out var u) || u.Scheme != "https") return "That isn't an https address.";
+        if (u.Host is not ("discord.com" or "discordapp.com" or "ptb.discord.com" or "canary.discord.com") || !u.AbsolutePath.StartsWith("/api/webhooks/"))
+            return "That isn't a Discord webhook - in Discord: the channel's settings › Integrations › Webhooks › Copy Webhook URL.";
+        return null;
+    }
 
     /// <summary>A message to Gotify (also Options' Send a test). Throws a <see cref="HostProblem"/> with the reason when it doesn't take it.</summary>
     public async Task Gotify(string title, string message, int priority = 5)
@@ -258,4 +345,32 @@ public sealed class Notifier
             if (!res.IsSuccessStatusCode)
                 throw new HostProblem((int)res.StatusCode is 401 or 403 ? "Gotify refused the app token." : "Gotify said " + (int)res.StatusCode + ".");
     }
+
+    /// <summary>A message to the Discord channel (also Options' Send a test): from the app's name, red for a problem. Throws a
+    /// <see cref="HostProblem"/> with the reason when Discord doesn't take it.</summary>
+    public async Task Discord(string title, string message, bool problem = false)
+    {
+        var s = _settings();
+        if (!DiscordReady(s)) throw new HostProblem("Discord isn't set up - paste a channel's webhook address.");
+        string url = Secrets.Unprotect(s.DiscordWebhook)?.Trim();
+        if (DiscordProblem(url) is { } why) throw new HostProblem(why);
+        var embed = new Dictionary<string, object> { ["title"] = Cut(title, 256), ["color"] = problem ? 0xE74C3C : 0x5B8DEF };
+        if (!string.IsNullOrWhiteSpace(message)) embed["description"] = Cut(message, 4000);
+        using var req = new HttpRequestMessage(HttpMethod.Post, url);
+        req.Content = JsonContent.Create(new { username = App, embeds = new[] { embed } });
+        HttpResponseMessage res;
+        try { res = await _http.SendAsync(req); }
+        catch (HttpRequestException ex) { throw new HostProblem("Couldn't reach Discord: " + ex.Message, ex); }
+        catch (TaskCanceledException ex) { throw new HostProblem("Discord didn't answer within 15 seconds.", ex); }
+        using (res)
+            if (!res.IsSuccessStatusCode)
+                throw new HostProblem((int)res.StatusCode switch
+                {
+                    401 or 403 or 404 => "Discord doesn't know that webhook - it may have been deleted. Make a new one and paste it.",
+                    429 => "Discord says too many messages - it takes them again in a moment.",
+                    int c => "Discord said " + c + ".",
+                });
+    }
+
+    static string Cut(string s, int max) { return s == null || s.Length <= max ? s : s.Substring(0, max - 1) + "…"; }
 }

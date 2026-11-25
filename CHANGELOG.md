@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.48
+
+- Notifications to Discord too (a channel's webhook): each group goes to any of Gotify, Discord and vShell, ticked in Options › Notifications. Choices made before keep their meaning, with Discord beside Gotify. Apps' settings gain `DiscordWebhook`.
+
 ## 1.0.47
 
 - vSuite.Server: the server apps' Activity log (`ActivityEvent`, `ActivityLog` / `ActivityLog<T>`) and notification routing (`Notifier`, `NotifyGroup`, `INotifySettings`) - shared instead of copied; reads vDeploy's older activity.json.

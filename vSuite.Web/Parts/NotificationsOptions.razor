@@ -1,5 +1,6 @@
-@* Options › Notifications for every server app: Gotify (address, app token, a test) and where each group goes. The app gives its
-   Notifier, its settings and a Saved callback (State.Save), and the line under the groups ("vShell shows them with its vProxy plugin …"). *@
+@* Options › Notifications for every server app: Gotify (address, app token, a test), Discord (a channel's webhook, a test) and where
+   each group goes - any of Gotify, Discord and vShell. The app gives its Notifier, its settings and a Saved callback (State.Save), and
+   the line under the groups ("vShell shows them with its vProxy plugin …"). *@
 
 <h4>Gotify</h4>
 <div class="ocard">
@@ -9,8 +10,21 @@
     <Row Title="App token" Hint="In Gotify: Apps › Create application, then its token. Kept protected in the data folder.">
         <input id="gotify-token" class="input mono w220" type="password" placeholder="@(string.IsNullOrEmpty(Settings.GotifyToken) ? "Axxxxxxxxxxxxxx" : "kept - type to change it")" @onchange="SetToken" autocomplete="off" />
     </Row>
-    <Row Title="Send a test" Hint="@(note ?? "A message to check it arrives")">
-        <button type="button" class="btn" disabled="@(!Notifier.GotifyReady() || testing)" @onclick="Test">@(testing ? "Sending…" : "Send a test")</button>
+    <Row Title="Send a test" Hint="@(gotifyNote ?? "A message to check it arrives")">
+        <button type="button" class="btn" disabled="@(!Notifier.GotifyReady() || testing != null)" @onclick="TestGotify">@(testing == "gotify" ? "Sending…" : "Send a test")</button>
+    </Row>
+</div>
+<h4>Discord</h4>
+<div class="ocard">
+    <Row Title="Channel webhook" Hint="@(discordProblem ?? "In Discord: the channel's settings › Integrations › Webhooks › New Webhook, then Copy Webhook URL. Kept protected in the data folder.")">
+        <input id="discord-webhook" class="input mono w220" type="password" placeholder="@(string.IsNullOrEmpty(Settings.DiscordWebhook) ? "https://discord.com/api/webhooks/…" : "kept - paste to change it")" @onchange="SetDiscord" autocomplete="off" />
+        @if (!string.IsNullOrEmpty(Settings.DiscordWebhook))
+        {
+            <button type="button" class="btn" @onclick="ForgetDiscord">Remove</button>
+        }
+    </Row>
+    <Row Title="Send a test" Hint="@(discordNote ?? "A message to check it arrives")">
+        <button type="button" class="btn" disabled="@(!Notifier.DiscordReady() || testing != null)" @onclick="TestDiscord">@(testing == "discord" ? "Sending…" : "Send a test")</button>
     </Row>
 </div>
 <h4>What goes where</h4>
@@ -18,15 +32,20 @@
     @foreach (var g in Notifier.Groups)
     {
         var key = g.Key;
+        var to = Notifier.To(key);
         <Row Title="@g.Title" Hint="@g.Hint">
-            <Seg Value="@Notifier.RouteOf(key)" ValueChanged="v => SetRoute(key, v)" Choices="Notifier.Routes" />
+            <div class="seg-ctl" role="group" aria-label="@g.Title">
+                @foreach (var (flag, name) in Targets)
+                {
+                    var f = flag;
+                    bool on = to.HasFlag(f);
+                    <button type="button" role="checkbox" aria-checked="@(on ? "true" : "false")" class="@(on ? "on" : "")" title="@Why(f)" @onclick="() => Flip(key, f)">@name</button>
+                }
+            </div>
         </Row>
     }
 </div>
-@if (!string.IsNullOrEmpty(Note))
-{
-    <p class="dim small">@Note</p>
-}
+<p class="dim small">Pick any of them for each - none: it's only on the Activity page. Gotify and Discord need setting up above.@if (!string.IsNullOrEmpty(Note)) {<text> @Note</text>}</p>
 
 @code {
     [Parameter, EditorRequired] public Notifier Notifier { get; set; }
@@ -35,16 +54,30 @@
     [Parameter, EditorRequired] public Action Saved { get; set; }
     /// <summary>The line under the groups: how vShell shows them, and that Activity has everything.</summary>
     [Parameter] public string Note { get; set; }
-    /// <summary>The example address in the hint.</summary>
+    /// <summary>The example address in Gotify's hint.</summary>
     [Parameter] public string Example { get; set; } = "http://10.0.10.5:8070";
 
-    string note;
-    bool testing;
+    static readonly (NotifyTo, string)[] Targets = { (NotifyTo.Gotify, "Gotify"), (NotifyTo.Discord, "Discord"), (NotifyTo.VShell, "vShell") };
+
+    string gotifyNote, discordNote, discordProblem, testing;
+
+    string Why(NotifyTo f)
+    {
+        if (f == NotifyTo.Gotify && !Notifier.GotifyReady()) return "Gotify isn't set up yet";
+        if (f == NotifyTo.Discord && !Notifier.DiscordReady()) return "Discord isn't set up yet";
+        return null;
+    }
+
+    void Flip(string key, NotifyTo f)
+    {
+        Notifier.Set(key, Notifier.To(key) ^ f);
+        Saved();
+    }
 
     void SetUrl(ChangeEventArgs e)
     {
         Settings.GotifyUrl = e.Value?.ToString()?.Trim();
-        note = null;
+        gotifyNote = null;
         Saved();
     }
 
@@ -52,23 +85,43 @@
     {
         string t = e.Value?.ToString()?.Trim();
         Settings.GotifyToken = string.IsNullOrEmpty(t) ? null : Secrets.Protect(t);
-        note = null;
+        gotifyNote = null;
         Saved();
     }
 
-    void SetRoute(string key, string route)
+    void SetDiscord(ChangeEventArgs e)
     {
-        Settings.Notify ??= new();
-        Settings.Notify[key] = route;
+        string url = e.Value?.ToString()?.Trim();
+        discordNote = null;
+        if (string.IsNullOrEmpty(url)) { discordProblem = null; return; }
+        discordProblem = Notifier.DiscordProblem(url);
+        if (discordProblem != null) return;
+        Settings.DiscordWebhook = Secrets.Protect(url);
         Saved();
     }
 
-    async Task Test()
+    void ForgetDiscord()
     {
-        testing = true;
-        note = null;
-        try { await Notifier.Gotify("a test", "Notifications from " + Notifier.App + " arrive here.", 5); note = "Sent - it should be in Gotify now."; }
-        catch (Exception ex) { note = "Didn't work: " + ex.Message; }
-        testing = false;
+        Settings.DiscordWebhook = null;
+        discordNote = discordProblem = null;
+        Saved();
+    }
+
+    async Task TestGotify()
+    {
+        testing = "gotify";
+        gotifyNote = null;
+        try { await Notifier.Gotify("a test", "Notifications from " + Notifier.App + " arrive here.", 5); gotifyNote = "Sent - it should be in Gotify now."; }
+        catch (Exception ex) { gotifyNote = "Didn't work: " + ex.Message; }
+        testing = null;
+    }
+
+    async Task TestDiscord()
+    {
+        testing = "discord";
+        discordNote = null;
+        try { await Notifier.Discord("A test", "Notifications from " + Notifier.App + " arrive here."); discordNote = "Sent - it should be in the channel now."; }
+        catch (Exception ex) { discordNote = "Didn't work: " + ex.Message; }
+        testing = null;
     }
 }

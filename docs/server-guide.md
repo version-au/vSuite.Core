@@ -183,10 +183,12 @@ status. **Field names are a contract** - vShell's plugin and vTrace read them: a
   `activity/<id>.log` (`Body(id)`). `Before` (the Notifier marks it) and `Written` (sent) hooks. The app's own `ActivityWatch` turns its
   events into entries: "down" only after a minute (two checks) and only when it starts, "back" only after a "down", a found thing once
   per version.
-- **`Notifier`:** `new Notifier("<App>", groups, () => settings)` - `NotifyGroup`s = (key, title, hint, default route); `Routes` Off /
-  Gotify / vShell / Both; `RouteOf(group)` = the settings' `Notify[group]`, else the default; `Watch(log)` marks `ToVShell` before saving
-  and sends to Gotify after (a POST to `/message` with `X-Gotify-Key`, the token `Secrets`-protected, title "<App>: …", a higher priority
-  for a problem). The app's settings implement `INotifySettings` (`Notify`, `GotifyUrl`, `GotifyToken`).
+- **`Notifier`:** `new Notifier("<App>", groups, () => settings)` - `NotifyGroup`s = (key, title, hint, default); each group goes to
+  any of **Gotify, Discord and vShell** (`NotifyTo` flags; 1.0.48) - `To(group)` / `Set(group, to)`, stored as "off" or
+  "to:gotify,discord,vshell"; a default or an older choice "both" = all three, "gotify" = Gotify and Discord, "vshell", "off".
+  `Watch(log)` marks `ToVShell` before saving and sends after: Gotify (a POST to `/message` with `X-Gotify-Key`, title "<App>: …", a
+  higher priority for a problem) and Discord (the channel's webhook, from "<App>", red for a problem). The app's settings implement
+  `INotifySettings` (`Notify`, `GotifyUrl`, `GotifyToken`, `DiscordWebhook` - secrets `Secrets`-protected).
 - **Options › Notifications** is `<NotificationsOptions Notifier="…" Settings="S" Saved="State.Save" Note="vShell shows them with its
   <App> plugin … Everything is also on the Activity page." />`.
 - **The side panel** is the app's own, built from `PlaceLink` (Hosts, Activity … with a count) and `SideHead` (a heading with an add
