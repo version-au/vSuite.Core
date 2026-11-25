@@ -11,6 +11,7 @@ app then moves its submodule forward (`git -C vSuite.Core pull` + commit in the 
 ## The design guide
 
 **`docs\design-guide.md`** - how a vSuite app looks, behaves and is put together (the window, theme, icon, controls, keys, words, Options, plumbing, data, release) and a new-app checklist. Every app follows it; change it in the same commit when the suite changes its mind.
+**`docs\server-guide.md`** (2026-11-25) - the same for the server apps (vDeploy, vPatch, vTrace, vMediarr, vProxy): the window in a browser, Options, sign-in and keys, the API for vShell, Activity and notifications, data, install / update / root, demo mode, release, and a new-server-app checklist.
 
 ## Projects
 
