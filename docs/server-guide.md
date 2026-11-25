@@ -107,7 +107,7 @@ OK). Rows: `Toggle` (on / off), `Seg` (2-4 choices), `<select>`, inputs (`input 
 | vDeploy | Notifications |
 | vPatch | Notifications |
 | vTrace | Sources, Local AI, Notifications |
-| vMediarr | Library, Files, Profiles, Indexers, Download clients, Connections, Requests, Compatibility (no Notifications - see 7); Backups after Look |
+| vMediarr | Library, Files, Profiles, Indexers, Download clients, Requests, Compatibility, then Connections and Notifications as the others (0.0.31); Backups after Look |
 
 - **General:** the app's defaults and timings (check every N hours …), the proxies allowed to pass on the visitor's address (vDeploy), and
   for apps with SSH hosts **Hosts** (vSuite.Web's `HostsCard`: export the ticked hosts as a "vsuite-hosts" file - name, address, port, SSH
@@ -194,8 +194,9 @@ status. **Field names are a contract** - vShell's plugin and vTrace read them: a
 - **Defaults:** failures and down / back = both; routine news (updates waiting, a change made outside) = vShell; things you did yourself
   working = off (vDeploy "deployed", vPatch "upgraded", vProxy "changes"); every app has an "<app>" group "A new <App> is out" (once per
   version - `UpdateTold`) = both.
-- vMediarr differs: its `EventLog` (SQLite) marks every event `ToVShell`, and its notifications are Connections (Webhook, Discord, Gotify,
-  and vShell by a POST to vShell's NotifyListener) as Radarr / Sonarr have them - not Notifier groups.
+- vMediarr keeps its events in SQLite (`EventLog`, 90 days) but uses the same `Notifier` and Options › Notifications (0.0.31): its
+  `AppEvent` is an `INotifyEvent`, its log calls the Notifier's `Mark` before keeping one. Its Radarr / Sonarr-style Connections
+  (Webhook, Discord, Gotify, vShell) stay as well, for what came from those apps.
 
 ## 8. Data and secrets
 
