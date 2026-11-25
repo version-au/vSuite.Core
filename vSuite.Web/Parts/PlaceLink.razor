@@ -3,7 +3,7 @@
 @implements IDisposable
 @inject NavigationManager Nav
 
-<a class="node @(Here ? "sel" : "")" href="@Href" title="@Title"><Icon Name="@Glyph" /><span class="nm">@Name</span>@if (!string.IsNullOrEmpty(Count)) {<span class="c @CountClass">@Count</span>}</a>
+<a class="node @(Here ? "sel" : "")" href="@Href" title="@Title"><Icon Name="@Glyph" /><span class="nm">@Name</span>@if (!string.IsNullOrEmpty(Count)) {<span class="c @CountClass" title="@CountTitle">@Count</span>}</a>
 
 @code {
     [Parameter, EditorRequired] public string Href { get; set; }
@@ -11,11 +11,22 @@
     [Parameter, EditorRequired] public string Name { get; set; }
     /// <summary>The text on the right ("8", "v12", "3 out"), or nothing.</summary>
     [Parameter] public string Count { get; set; }
-    /// <summary>The count's look ("warn-text", "bad-text").</summary>
+    /// <summary>The count's look ("warn-text", "bad-text", "hot").</summary>
     [Parameter] public string CountClass { get; set; }
+    /// <summary>The count's own tooltip (what it counts).</summary>
+    [Parameter] public string CountTitle { get; set; }
     [Parameter] public string Title { get; set; }
+    /// <summary>Also picked on the pages under it ("/automations/nightly" for "/automations").</summary>
+    [Parameter] public bool AndBelow { get; set; }
 
-    bool Here { get { return Tabs.PathOf(Nav.Uri) == Href; } }
+    bool Here
+    {
+        get
+        {
+            string path = Tabs.PathOf(Nav.Uri);
+            return path == Href || (AndBelow && path.StartsWith(Href.TrimEnd('/') + "/"));
+        }
+    }
 
     protected override void OnInitialized() { Nav.LocationChanged += Moved; }
     void Moved(object sender, LocationChangedEventArgs e) { InvokeAsync(StateHasChanged); }

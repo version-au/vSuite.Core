@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.49
+
+- vSuite.Web `PlaceLink`: `AndBelow` (also picked on the pages under it) and `CountTitle` (the count's own tooltip) - for vDeploy's side panel.
+
 ## 1.0.48
 
 - Notifications to Discord too (a channel's webhook): each group goes to any of Gotify, Discord and vShell, ticked in Options › Notifications. Choices made before keep their meaning, with Discord beside Gotify. Apps' settings gain `DiscordWebhook`.
