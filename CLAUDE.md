@@ -28,6 +28,9 @@ app then moves its submodule forward (`git -C vSuite.Core pull` + commit in the 
   here too - an app's settings class lives in its project without web parts.
   `HostsFile` (1.0.35): the hosts file the server apps exchange ("vsuite-hosts" format 1 - name, address, port, SSH host key, OS,
   CPU, never a user / password / key; vDeploy's older "vdeploy-hosts" reads too) - `Json`, `Read` (problems in words), `FileName`, `Same`.
+  `Activity.cs` (1.0.47, V: shared instead of copied in each app): `ActivityEvent` / `ActivityLog<T>` / `ActivityLog` (activity.json,
+  1,000 newest first, outputs of the newest 50 in activity/<id>.log; reads vDeploy's older oldest-first file) and `Notifier` /
+  `NotifyGroup` / `INotifySettings` / `INotifyEvent` (routes off / gotify / vshell / both, Gotify). Tests: `vSuite.Server.Tests`.
 - `vSuite.Web` (1.0.32-1.0.35, Razor class library on vSuite.Server): the server apps' pages - a vSuite window in a browser.
   - `HostsCard` (1.0.35): Options > General > Hosts in vDeploy, vPatch and vTrace - export the ticked hosts (a data: link, no endpoint)
     and import a file; the app gives `ImportAction` (per host not here yet) and optionally `ImportAll`. Icons added: upload, pc, server,
@@ -42,7 +45,8 @@ app then moves its submodule forward (`git -C vSuite.Core pull` + commit in the 
     `SignInOptions` (Options > Sign-in: login, authenticator, trusted addresses, staying signed in, app keys, dangerous actions).
   - Pages `/login` and `/setup`: the app's router needs `AdditionalAssemblies = WebApp.Assembly` and MapRazorComponents
     `.AddAdditionalAssemblies(WebApp.Assembly)`.
-  - Parts (namespace vSuite.Web.Parts): Icon (add glyphs here), Toggle, Seg, Row, UseBar, Crumbs, ConfirmDialog.
+  - Parts (namespace vSuite.Web.Parts): Icon (add glyphs here), Toggle, Seg, Row, UseBar, Crumbs, ConfirmDialog; (1.0.47)
+    `NotificationsOptions` (Options › Notifications: Gotify + what goes where), `Dot`, the side panel's `PlaceLink` / `SideHead`.
   - `wwwroot/vsuite.css` (window, menus, pages, cards, buttons, tables, code, forms, Options, confirmation, sign-in, phone width) and
     `wwwroot/vsuite.js` (`window.vs`: layout memory under `<html data-app>`, splitter, Ctrl+B, tab wheel, copy, focus, keepEnd) - link
     both before the app's own app.css / app.js.

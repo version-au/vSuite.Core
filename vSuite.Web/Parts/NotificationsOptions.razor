@@ -1,0 +1,74 @@
+@* Options › Notifications for every server app: Gotify (address, app token, a test) and where each group goes. The app gives its
+   Notifier, its settings and a Saved callback (State.Save), and the line under the groups ("vShell shows them with its vProxy plugin …"). *@
+
+<h4>Gotify</h4>
+<div class="ocard">
+    <Row Title="Gotify's address" Hint="@("Your Gotify server, such as " + Example)">
+        <input id="gotify-url" class="input mono w220" placeholder="http://gotify.lan" value="@Settings.GotifyUrl" @onchange="SetUrl" />
+    </Row>
+    <Row Title="App token" Hint="In Gotify: Apps › Create application, then its token. Kept protected in the data folder.">
+        <input id="gotify-token" class="input mono w220" type="password" placeholder="@(string.IsNullOrEmpty(Settings.GotifyToken) ? "Axxxxxxxxxxxxxx" : "kept - type to change it")" @onchange="SetToken" autocomplete="off" />
+    </Row>
+    <Row Title="Send a test" Hint="@(note ?? "A message to check it arrives")">
+        <button type="button" class="btn" disabled="@(!Notifier.GotifyReady() || testing)" @onclick="Test">@(testing ? "Sending…" : "Send a test")</button>
+    </Row>
+</div>
+<h4>What goes where</h4>
+<div class="ocard">
+    @foreach (var g in Notifier.Groups)
+    {
+        var key = g.Key;
+        <Row Title="@g.Title" Hint="@g.Hint">
+            <Seg Value="@Notifier.RouteOf(key)" ValueChanged="v => SetRoute(key, v)" Choices="Notifier.Routes" />
+        </Row>
+    }
+</div>
+@if (!string.IsNullOrEmpty(Note))
+{
+    <p class="dim small">@Note</p>
+}
+
+@code {
+    [Parameter, EditorRequired] public Notifier Notifier { get; set; }
+    [Parameter, EditorRequired] public INotifySettings Settings { get; set; }
+    /// <summary>Called after a change (the app saves its settings).</summary>
+    [Parameter, EditorRequired] public Action Saved { get; set; }
+    /// <summary>The line under the groups: how vShell shows them, and that Activity has everything.</summary>
+    [Parameter] public string Note { get; set; }
+    /// <summary>The example address in the hint.</summary>
+    [Parameter] public string Example { get; set; } = "http://10.0.10.5:8070";
+
+    string note;
+    bool testing;
+
+    void SetUrl(ChangeEventArgs e)
+    {
+        Settings.GotifyUrl = e.Value?.ToString()?.Trim();
+        note = null;
+        Saved();
+    }
+
+    void SetToken(ChangeEventArgs e)
+    {
+        string t = e.Value?.ToString()?.Trim();
+        Settings.GotifyToken = string.IsNullOrEmpty(t) ? null : Secrets.Protect(t);
+        note = null;
+        Saved();
+    }
+
+    void SetRoute(string key, string route)
+    {
+        Settings.Notify ??= new();
+        Settings.Notify[key] = route;
+        Saved();
+    }
+
+    async Task Test()
+    {
+        testing = true;
+        note = null;
+        try { await Notifier.Gotify("a test", "Notifications from " + Notifier.App + " arrive here.", 5); note = "Sent - it should be in Gotify now."; }
+        catch (Exception ex) { note = "Didn't work: " + ex.Message; }
+        testing = false;
+    }
+}

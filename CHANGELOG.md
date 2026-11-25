@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.47
+
+- vSuite.Server: the server apps' Activity log (`ActivityEvent`, `ActivityLog` / `ActivityLog<T>`) and notification routing (`Notifier`, `NotifyGroup`, `INotifySettings`) - shared instead of copied; reads vDeploy's older activity.json.
+- vSuite.Web: `NotificationsOptions` (Options › Notifications: Gotify and what goes where), `Dot`, and the side panel's `PlaceLink` / `SideHead`.
+- vSuite.Server.Tests: tests for them.
+
 ## 1.0.46
 
 - SnapLayouts: a maximise button that isn't a WPF Button, or is made again (vTerm's strip) - its own click and hover look.

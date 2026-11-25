@@ -1,5 +1,6 @@
 <Solution>
   <Project Path="vSuite.Core/vSuite.Core.csproj" />
+  <Project Path="vSuite.Server.Tests/vSuite.Server.Tests.csproj" />
   <Project Path="vSuite.Server/vSuite.Server.csproj" />
   <Project Path="vSuite.Web/vSuite.Web.csproj" />
   <Project Path="vSuite.Shell/vSuite.Shell.csproj" />

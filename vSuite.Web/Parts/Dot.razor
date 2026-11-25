@@ -1,0 +1,8 @@
+@* A state dot (vsuite.css .dot): ok, warn, bad, off, wait. *@
+<span class="dot @Look" title="@Title"></span>
+
+@code {
+    /// <summary>ok, warn, bad, off, wait</summary>
+    [Parameter] public string Look { get; set; } = "ok";
+    [Parameter] public string Title { get; set; }
+}

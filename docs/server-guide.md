@@ -174,14 +174,23 @@ status. **Field names are a contract** - vShell's plugin and vTrace read them: a
 
 ## 7. Activity and notifications
 
+**Shared since vSuite.Core 1.0.47** (vSuite.Server `Activity.cs`, vSuite.Web `NotificationsOptions`) - never copy them into an app.
+
 - **`ActivityEvent`:** `Id`, `At`, `Kind`, `Title`, `Detail`, `Look` (ok / info / warn / bad), `Group` (its notification group - null =
-  only listed), `ToVShell`, `Link` (its page), plus what it's about (`HostId` / `Host`; vDeploy `Guest` / `VmId`).
-- **`ActivityLog`:** activity.json, newest first, the newest **1,000**; outputs kept for the newest 50 (vDeploy in the file, vPatch as
-  `activity/<id>.log`). `Before` (the Notifier marks it) and `Written` (sent) hooks. An `ActivityWatch` turns the app's events into
-  entries: "down" only after a minute (two checks) and only when it starts, "back" only after a "down", a found thing once per version.
-- **`Notifier`:** `Groups` = (key, title, hint, default route); `Routes` Off / Gotify / vShell / Both; `RouteOf(settings, group)` =
-  `AppSettings.Notify[group]`, else the default. `Mark` sets `ToVShell` before saving; Gotify is a POST to `/message` with `X-Gotify-Key`
-  (the token `Secrets`-protected), title "<App>: …", a higher priority for a problem.
+  only listed), `ToVShell`, `Link` (its page), `HostId` / `Host` (what it's about), `HasBody`. An app with more subclasses it and uses
+  `ActivityLog<T>` (vDeploy: `Stack`, `Guest`, `VmId`, `Ok`).
+- **`ActivityLog`:** activity.json, newest first, the newest **1,000**; `Write(e, body)` keeps the output of the newest 50 as
+  `activity/<id>.log` (`Body(id)`). `Before` (the Notifier marks it) and `Written` (sent) hooks. The app's own `ActivityWatch` turns its
+  events into entries: "down" only after a minute (two checks) and only when it starts, "back" only after a "down", a found thing once
+  per version.
+- **`Notifier`:** `new Notifier("<App>", groups, () => settings)` - `NotifyGroup`s = (key, title, hint, default route); `Routes` Off /
+  Gotify / vShell / Both; `RouteOf(group)` = the settings' `Notify[group]`, else the default; `Watch(log)` marks `ToVShell` before saving
+  and sends to Gotify after (a POST to `/message` with `X-Gotify-Key`, the token `Secrets`-protected, title "<App>: …", a higher priority
+  for a problem). The app's settings implement `INotifySettings` (`Notify`, `GotifyUrl`, `GotifyToken`).
+- **Options › Notifications** is `<NotificationsOptions Notifier="…" Settings="S" Saved="State.Save" Note="vShell shows them with its
+  <App> plugin … Everything is also on the Activity page." />`.
+- **The side panel** is the app's own, built from `PlaceLink` (Hosts, Activity … with a count) and `SideHead` (a heading with an add
+  button) and `Dot`.
 - **Defaults:** failures and down / back = both; routine news (updates waiting, a change made outside) = vShell; things you did yourself
   working = off (vDeploy "deployed", vPatch "upgraded", vProxy "changes"); every app has an "<app>" group "A new <App> is out" (once per
   version - `UpdateTold`) = both.

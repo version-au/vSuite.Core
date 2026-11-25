@@ -1,0 +1,10 @@
+@* A heading in the side panel ("Hosts") with an optional button on the right (add, settings). *@
+<div class="sidehead"><span>@Text</span>@if (!string.IsNullOrEmpty(Href)) {<a class="iconbtn" href="@Href" title="@Title"><Icon Name="@Glyph" Size="12" /></a>}</div>
+
+@code {
+    [Parameter, EditorRequired] public string Text { get; set; }
+    /// <summary>The button's page ("/hosts/add") - none: no button.</summary>
+    [Parameter] public string Href { get; set; }
+    [Parameter] public string Glyph { get; set; } = "add";
+    [Parameter] public string Title { get; set; }
+}
