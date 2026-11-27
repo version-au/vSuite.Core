@@ -241,6 +241,13 @@ at once - **no OK button**, one Options window at a time, Esc closes).
   installer (Inno Setup: per user, `%LOCALAPPDATA%\Programs\<App>`, a new AppId GUID, `AppMutex=<App>.Running`, `<App>-setup.exe` - the
   same name every release, uninstall offers to delete the settings folder), the release notes from CHANGELOG.md and the update site's
   files (`site-release.ps1` - it also marks the version's heading in CHANGELOG.md "· pre-release" or "· release": commit CHANGELOG.md after every build); `upload` puts them on the site, `pre` makes a pre-release. **Only when V asks.**
+- **Code signing** (1.0.50): the Certum open-source certificate, in Certum's cloud - **SimplySign Desktop must be connected** (a code
+  from the phone) before a build. build.cmd signs the app straight after publishing (`vSuite.Core\scripts\sign.ps1`: SHA-256, Certum's
+  timestamp, verified), Inno Setup signs the setup and its uninstaller (`SignTool=vsuite` under `#ifdef SIGN` in the .iss; build.cmd
+  passes `/DSIGN "/Svsuite=$q...\sign.cmd$q $f"`), and site-release.ps1's hashes are of the signed files. Not connected: a local build
+  goes on unsigned (sign.ps1 exit 2); `upload` stops. `build.cmd nosign` skips it (never uploaded). vView signs its own exe / DLLs
+  before zipping (not VLC's or .NET's). The certificate is found by issuer + Code Signing (or `%VSUITE_SIGN_THUMBPRINT%`) - nothing
+  about it is in the repos.
 - **House rules:** every user-visible change bumps the version (the next N once the current one has been built), with one CHANGELOG line
   and test steps in TESTING.md; commit messages `0.1.N: what changed` in lower case; shared pieces change in vSuite.Core first (with its
   tests), then each app moves to it.

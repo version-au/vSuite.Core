@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.50
+
+- scripts\sign.ps1 + sign.cmd: the Windows apps' builds sign the app, its installer and uninstaller with the Certum certificate (SimplySign Desktop connected); an upload needs it.
+
 ## 1.0.49
 
 - vSuite.Web `PlaceLink`: `AndBelow` (also picked on the pages under it) and `CountTitle` (the count's own tooltip) - for vDeploy's side panel.
