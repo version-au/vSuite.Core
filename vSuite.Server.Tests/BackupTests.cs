@@ -99,6 +99,23 @@ public class BackupTests : IDisposable
     }
 
     [Fact]
+    public void An_older_backup_goes_over_what_is_there_and_keeps_the_key()
+    {
+        string p = Path.Combine(_dir, "old.zip");
+        using (var z = ZipFile.Open(p, ZipArchiveMode.Create))
+        {
+            using (var s = new StreamWriter(z.CreateEntry("vtest.db").Open())) s.Write("old db");
+            using (var s = new StreamWriter(z.CreateEntry("settings.json").Open())) s.Write("{\"a\":0}");
+        }
+        new Backups("1.2.3", () => _s) { Legacy = "vtest.db" }.Restore(p);
+        Backups.ApplyPending("1.2.3");
+        Assert.Equal("old db", File.ReadAllText(Paths.File("vtest.db")));
+        Assert.Equal("{\"a\":0}", File.ReadAllText(Paths.File("settings.json")));
+        Assert.Equal("KEY", File.ReadAllText(Paths.File("secret.key")));
+        Assert.Equal("v1", File.ReadAllText(Paths.File("versions/web/1.json")));
+    }
+
+    [Fact]
     public void Nothing_comes_out_outside_the_data_folder()
     {
         string p = Path.Combine(_dir, "evil.zip");

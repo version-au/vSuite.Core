@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.52
+
+- Backups: an app's older backup (vMediarr's, without secret.key) is unpacked over what's there instead of replacing it, so the key stays.
+
 ## 1.0.51
 
 - Backups for every server app: vSuite.Server `Backups` (the whole data folder as a zip, secret.key included - daily, by hand, copied to a folder of your choosing; restored at the next start) and vSuite.Web's Options › Backups page (`BackupsOptions`) and download (`BackupWeb.Map`).

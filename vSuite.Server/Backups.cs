@@ -209,12 +209,16 @@ public sealed class Backups
             Write(keep, version, null, null);
 
             string root = Path.GetFullPath(Paths.Data);
-            foreach (var d in Directory.EnumerateDirectories(root))
-                if (!Skipped(Path.GetFileName(d), AlwaysSkip)) Directory.Delete(d, true);
-            foreach (var f in Directory.EnumerateFiles(root))
-                if (!Skipped(Path.GetFileName(f), AlwaysSkip)) File.Delete(f);
-
             using (var z = ZipFile.OpenRead(Pending))
+            {
+                // a whole-folder backup replaces what's there; an app's older backup (no note - only some files, never secret.key) goes over it
+                if (z.GetEntry(Note) != null)
+                {
+                    foreach (var d in Directory.EnumerateDirectories(root))
+                        if (!Skipped(Path.GetFileName(d), AlwaysSkip)) Directory.Delete(d, true);
+                    foreach (var f in Directory.EnumerateFiles(root))
+                        if (!Skipped(Path.GetFileName(f), AlwaysSkip)) File.Delete(f);
+                }
                 foreach (var e in z.Entries)
                 {
                     if (e.FullName == Note || e.FullName.EndsWith('/') || Skipped(e.FullName, AlwaysSkip)) continue;
@@ -224,6 +228,7 @@ public sealed class Backups
                     e.ExtractToFile(dest, true);
                     if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(dest, UnixFileMode.UserRead | UnixFileMode.UserWrite);
                 }
+            }
             Log.Write("Restored a backup (what was there is in backups/manual)");
         }
         catch (Exception ex) { Log.Write("Restoring the backup failed: " + ex.Message); }
