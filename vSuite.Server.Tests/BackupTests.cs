@@ -30,6 +30,9 @@ public class BackupTests : IDisposable
         File.WriteAllText(Paths.File("versions/web/old.log"), "log");
         Directory.CreateDirectory(Paths.File("app.new"));
         File.WriteAllText(Paths.File("app.new/vtest"), "exe");
+        Directory.CreateDirectory(Paths.File("app"));
+        File.WriteAllText(Paths.File("app/vtest"), "running exe");
+        File.WriteAllText(Paths.File("update-failed"), "0.9");
     }
 
     public void Dispose() { try { Directory.Delete(_dir, true); } catch { } }
@@ -75,6 +78,8 @@ public class BackupTests : IDisposable
         Assert.False(File.Exists(Paths.File("extra.json")));
         Assert.False(File.Exists(Paths.File(Backups.Note)));
         Assert.Equal("log", File.ReadAllText(Paths.File("other.log")));           // logs stay
+        Assert.Equal("running exe", File.ReadAllText(Paths.File("app/vtest")));     // the program itself stays (1.0.51 cleared it)
+        Assert.True(File.Exists(Paths.File("update-failed")));
         // what was there is kept, with the new key and the extra file
         var before = b.List().Single(x => x.Name.Contains("_before_restore_"));
         Assert.Contains("extra.json", Names(before.Path));

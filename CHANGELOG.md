@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.54
+
+- Backups: the program itself (app/ and the update's files) is never backed up or cleared by a restore - 1.0.51 cleared it, so the app couldn't start again.
+
 ## 1.0.53
 
 - Backups: two backups (or a restore's "before restore" copy) in the same second no longer clash - the restore stopped.

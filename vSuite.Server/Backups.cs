@@ -20,8 +20,12 @@ public sealed class Backups
 {
     public const string Note = "vsuite-backup.json";
 
-    /// <summary>Never backed up: the backups themselves, a restore waiting, logs, half-written and temporary files, sockets, an update being unpacked.</summary>
-    static readonly string[] AlwaysSkip = { "backups", "restore.zip", "app.new", "app.old", "*.log", "*.tmp", "*.part", "*.sock", "*.pid" };
+    /// <summary>
+    /// Never backed up, and never cleared by a restore: the program itself (run.sh's app/, app.new, app.old, app.trying, update-failed and
+    /// SelfUpdate's update.tar.gz - 1.0.51 cleared app/, so the app couldn't start again), the backups, a restore waiting, logs,
+    /// half-written and temporary files, sockets.
+    /// </summary>
+    static readonly string[] AlwaysSkip = { "app", "app.new", "app.old", "app.trying", "update-failed", "update.tar.gz", "backups", "restore.zip", "*.log", "*.tmp", "*.part", "*.sock", "*.pid" };
 
     readonly string _version;
     readonly Func<IBackupSettings> _settings;

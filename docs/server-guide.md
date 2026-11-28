@@ -208,7 +208,7 @@ status. **Field names are a contract** - vShell's plugin and vTrace read them: a
   the app's stores, activity.json, `secret.key`, `keys/`, `id_<app>` (its SSH key), `<app>.log`, and the app itself in `app/` (9).
 - **Backups** (1.0.51, V: "so if they're ever reinstalled I can just import the backup"): vSuite.Server's `Backups` zips the whole data
   folder - settings, stores, `secret.key`, `keys/`, `id_<app>` (without `secret.key` a restored install can't read a single saved
-  password) - less logs, `backups/`, `app.new`, `*.tmp` / `*.part` / `*.sock` and the app's own `Skip`; a note `vsuite-backup.json` (app,
+  password) - less the program (`app/`, `app.new`, `app.old`, `app.trying`, `update-failed`, `update.tar.gz` - never cleared by a restore either), logs, `backups/`, `*.tmp` / `*.part` / `*.sock` and the app's own `Skip`; a note `vsuite-backup.json` (app,
   version, made). Daily (7) + by hand (10) in `backups/`, each copied to `IBackupSettings.BackupCopyTo` when set (the app's newest 7 kept
   there). Plain zips (V): the page says anyone with one can read its passwords. Restore = `restore.zip`, then at the next start
   `Backups.ApplyPending(version)` - **right after `Paths.Init`, before anything reads the data** - keeps a `_before_restore_` backup, clears
