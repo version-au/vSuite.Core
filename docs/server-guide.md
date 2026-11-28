@@ -99,7 +99,7 @@ cookie) and vMediarr's `/ask*` (static on purpose: a live circuit could reach th
 OK). Rows: `Toggle` (on / off), `Seg` (2-4 choices), `<select>`, inputs (`input mono` for addresses and keys). A secret's box is
 `type="password"`, empty, with the placeholder "kept - paste to change it" once there is one - a stored secret is never shown again.
 
-**Pages, in this order:** General · the app's own pages · Connections · Notifications · Sign-in · Look · Updates · About.
+**Pages, in this order:** General · the app's own pages · Connections · Notifications · Sign-in · Look · Backups · Updates · About.
 
 | App | Its own pages (between General and Sign-in) |
 |---|---|
@@ -107,7 +107,7 @@ OK). Rows: `Toggle` (on / off), `Seg` (2-4 choices), `<select>`, inputs (`input 
 | vDeploy | Notifications |
 | vPatch | Notifications |
 | vTrace | Sources, Local AI, Notifications |
-| vMediarr | Library, Files, Profiles, Indexers, Download clients, Requests, Compatibility, then Connections and Notifications as the others (0.0.31); Backups after Look |
+| vMediarr | Library, Files, Profiles, Indexers, Download clients, Requests, Compatibility, then Connections and Notifications as the others (0.0.31) |
 
 - **General:** the app's defaults and timings (check every N hours …), the proxies allowed to pass on the visitor's address (vDeploy), and
   for apps with SSH hosts **Hosts** (vSuite.Web's `HostsCard`: export the ticked hosts as a "vsuite-hosts" file - name, address, port, SSH
@@ -119,6 +119,8 @@ OK). Rows: `Toggle` (on / off), `Seg` (2-4 choices), `<select>`, inputs (`input 
 - **Sign-in:** `<SignInOptions ClientIp=… KeysHint=… ActionsHint=… />` - nothing of the app's own.
 - **Look:** "Use vShell's colours" (who sent them and when, else "None have come yet, so vShell's default theme is used"), the swatches
   (background, text, accents, ok / warn / bad), Text size Normal / Larger.
+- **Backups** (1.0.51): `<BackupsOptions Backups=… Settings=… Saved=… Restart=… What="…" />` - Back up now, Also copy to (a folder a
+  reinstall won't wipe), Restore from a file, the list with Download / Restore (8).
 - **Updates:** a banner for "updated itself to x" / "the update to x didn't start, so y was put back"; This <App>, The newest + Check now,
   Include pre-releases, then "<App> x is out" with Update now and What's new (the changelog sections since yours); "Updates come from
   vsuite.vrsion.com … checked a minute after <App> starts and every six hours." Pinned parts the app ships go here too (vProxy: Caddy and
@@ -204,7 +206,15 @@ status. **Field names are a contract** - vShell's plugin and vTrace read them: a
 
 - **The data folder** `/var/lib/<app>` (700, the app's user; `PREFIX_DATA_DIR` for tests and Windows) holds everything: settings.json,
   the app's stores, activity.json, `secret.key`, `keys/`, `id_<app>` (its SSH key), `<app>.log`, and the app itself in `app/` (9).
-  **Backups = the data folder as a whole** (About says so); vMediarr also makes its own (VACUUM INTO + settings, daily 7 / manual 10).
+- **Backups** (1.0.51, V: "so if they're ever reinstalled I can just import the backup"): vSuite.Server's `Backups` zips the whole data
+  folder - settings, stores, `secret.key`, `keys/`, `id_<app>` (without `secret.key` a restored install can't read a single saved
+  password) - less logs, `backups/`, `app.new`, `*.tmp` / `*.part` / `*.sock` and the app's own `Skip`; a note `vsuite-backup.json` (app,
+  version, made). Daily (7) + by hand (10) in `backups/`, each copied to `IBackupSettings.BackupCopyTo` when set (the app's newest 7 kept
+  there). Plain zips (V): the page says anyone with one can read its passwords. Restore = `restore.zip`, then at the next start
+  `Backups.ApplyPending(version)` - **right after `Paths.Init`, before anything reads the data** - keeps a `_before_restore_` backup, clears
+  the folder (not backups / logs) and unpacks (never outside it, 600). Refused: another app's, a newer version's. An app with a database
+  in use skips its files and writes a safe copy through `AddOwn` (vMediarr: VACUUM INTO); `Legacy` = a file that marks its older backups.
+  Program.cs: `var backups = new Backups(AppState.Version, () => state.Settings)`, `BackupWeb.Map(app, backups)`, `backups.RunLoop`.
 - **`JsonFile`:** `Save` writes `.tmp`, flushes to disk, keeps the old file as `.bak`, moves over; `Load` keeps an unreadable file as
   `.broken-<time>` and falls back to `.bak`; `must: true` (settings, hosts) stops the app rather than save an empty one over it.
   `Private(path)` = 600. A list edited from several places goes one at a time (a lock or a per-thing gate).
@@ -295,7 +305,9 @@ status. **Field names are a contract** - vShell's plugin and vTrace read them: a
 - [ ] Window: `SuiteWindow` (`PlusPath=""`) with the menu and `SidePanel`, the app's `Tabs` (KeyOf / RankOf), StatusLine, phone width.
 - [ ] Icon: mock-ups shown to V, then `AppLogo.razor` + favicon.svg; new glyphs in vSuite.Web's `Icon`.
 - [ ] Theme: CSS variables only; vsuite.css / vsuite.js linked first; Look page as 4.
-- [ ] Options: General · own pages · Connections · Notifications · Sign-in · Look · Updates · About (with Made with).
+- [ ] Options: General · own pages · Connections · Notifications · Sign-in · Look · Backups · Updates · About (with Made with).
+- [ ] Backups: settings implement `IBackupSettings`; `Backups.ApplyPending` right after `Paths.Init`; `BackupWeb.Map`, `RunLoop`, the page;
+      a test that a backup restores into an empty data folder with its secrets readable.
 - [ ] Dangerous actions through `ConfirmDialog`; sign-in changes ask for the password.
 - [ ] `ActivityLog` (1,000) + `ActivityWatch` + `Notifier` groups with defaults, an "<app>" update group; Activity page.
 - [ ] `/api/v1`: overview with `lastEvent`, events with `toVShell`, `PUT /theme` with WebTheme's names; app keys work.

@@ -1,0 +1,110 @@
+@inject Dialogs Dialogs
+@inject Clock Clock
+
+@* Options › Backups for every server app (1.0.51): the whole data folder as a zip - daily (the last 7) and by hand (the last 10), copied
+   to a folder of your choosing too; download one, restore one or a file (the app restarts with it - what was there is kept as a backup).
+   The app gives its Backups, its settings (IBackupSettings), Saved (State.Save) and Restart (SelfUpdate.Restart). Downloads are
+   /backup/{type}/{name} - BackupWeb.Map. *@
+<p class="dim small">A backup is everything @ServerApp.Name keeps: its settings, @(What ?? "its data"), and the keys that open its saved
+    passwords. One is made every day (the last 7 are kept) and whenever you press Back up now (the last 10). After reinstalling
+    @ServerApp.Name, sign in and restore one here: it comes back as it was.</p>
+<p class="dim small">Keep backups somewhere safe: anyone with one can read the passwords saved in it.</p>
+
+<div class="ocard">
+    <Row Title="Back up now" Hint="@(note ?? "Takes a few seconds")">
+        <button type="button" class="btn pri" disabled="@busy" @onclick="Now">@(busy ? "Backing up…" : "Back up now")</button>
+    </Row>
+    <Row Title="Also copy to" Hint="@CopyHint">
+        <input class="input mono w220" placeholder="/mnt/backups" value="@Settings.BackupCopyTo" @onchange="SetCopyTo" />
+    </Row>
+    <Row Title="Restore from a file" Hint="@("A " + ServerApp.Name + " backup (.zip) - " + ServerApp.Name + " restarts with it")">
+        <InputFile OnChange="Upload" accept=".zip" />
+    </Row>
+</div>
+
+<h4>Backups</h4>
+<div class="ocard">
+    @if (list.Count == 0) { <Row Title="None yet" Hint="The first one is made ten minutes after it starts." /> }
+    @foreach (var b0 in list)
+    {
+        var b = b0;
+        <Row Title="@b.Name" Hint="@(Kind(b) + " · " + Size(b.Size) + " · " + Clock.Stamp(new DateTimeOffset(b.Time, TimeSpan.Zero)))">
+            <a class="btn small" href="@("/backup/" + b.Type + "/" + Uri.EscapeDataString(b.Name))" download>Download</a>
+            <button type="button" class="btn small" @onclick="() => Restore(b.Path, b.Name)">Restore</button>
+        </Row>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public Backups Backups { get; set; }
+    [Parameter, EditorRequired] public IBackupSettings Settings { get; set; }
+    /// <summary>Called after a change (the app saves its settings).</summary>
+    [Parameter, EditorRequired] public Action Saved { get; set; }
+    /// <summary>Restarts the app (SelfUpdate.Restart) - a restore goes in at the next start.</summary>
+    [Parameter, EditorRequired] public Action Restart { get; set; }
+    /// <summary>What else is in it, in words: "the hosts, schedules and their history".</summary>
+    [Parameter] public string What { get; set; }
+
+    List<Backups.Entry> list = new();
+    bool busy;
+    string note, copyProblem;
+
+    protected override void OnInitialized() { list = Backups.List(); copyProblem = Backups.CheckFolder(Settings.BackupCopyTo); }
+
+    string CopyHint => copyProblem ?? Backups.CopyProblem ?? (string.IsNullOrWhiteSpace(Settings.BackupCopyTo)
+        ? "A folder on this machine that a reinstall won't wipe, such as a NAS share mounted into the container. Each backup is copied there too (the newest 7 kept)."
+        : "Each backup is copied there too (the newest 7 kept)" + (Backups.CopiedAt is DateTime t ? " · last copied " + Clock.Stamp(new DateTimeOffset(t, TimeSpan.Zero)) : ""));
+
+    static string Kind(Backups.Entry b) { return b.Name.Contains("_before_restore_") ? "From before a restore" : b.Type == "scheduled" ? "Daily" : "By hand"; }
+
+    static string Size(long n) { return n < 1024 * 1024 ? Math.Max(1, n / 1024) + " KB" : (n / 1024.0 / 1024).ToString("0.0") + " MB"; }
+
+    void SetCopyTo(ChangeEventArgs e)
+    {
+        string v = e.Value?.ToString()?.Trim().TrimEnd('/');
+        Settings.BackupCopyTo = string.IsNullOrEmpty(v) ? null : v;
+        Saved();
+        copyProblem = Backups.CheckFolder(Settings.BackupCopyTo);
+    }
+
+    async Task Now()
+    {
+        busy = true;
+        try { var e = await Task.Run(() => Backups.Create("manual")); note = "Made " + e.Name + (Backups.CopyProblem == null && !string.IsNullOrEmpty(Settings.BackupCopyTo) ? ", and copied" : ""); }
+        catch (Exception ex) { note = "Couldn't: " + ex.Message; }
+        list = Backups.List();
+        busy = false;
+    }
+
+    void Restore(string path, string name)
+    {
+        string made;
+        try { var n = Backups.Check(path); made = n == null ? "" : " (" + ServerApp.Name + " " + n.Version + ", " + Clock.Stamp(new DateTimeOffset(n.Made, TimeSpan.Zero)) + ")"; }
+        catch (IOException ex) { note = ex.Message; return; }
+        Dialogs.Ask(new ConfirmRequest
+        {
+            Title = "Restore " + name + "?",
+            Body = ServerApp.Name + " restarts with everything in this backup" + made + " - anything since then is gone (what's there now is kept as a backup first).",
+            Name = "restore", Mode = "type", Danger = true, Action = "Restore it",
+            Run = () =>
+            {
+                Backups.Restore(path);
+                Restart?.Invoke();
+                return Task.CompletedTask;
+            },
+        });
+    }
+
+    async Task Upload(InputFileChangeEventArgs e)
+    {
+        string tmp = Path.Combine(Path.GetTempPath(), ServerApp.Lower + "-upload-" + Guid.NewGuid().ToString("N") + ".zip");
+        try
+        {
+            await using (var s = e.File.OpenReadStream(4L * 1024 * 1024 * 1024))
+            await using (var f = File.Create(tmp))
+                await s.CopyToAsync(f);
+            Restore(tmp, e.File.Name);
+        }
+        catch (Exception ex) { note = "Couldn't read it: " + ex.Message; }
+    }
+}

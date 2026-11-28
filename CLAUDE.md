@@ -32,6 +32,10 @@ app then moves its submodule forward (`git -C vSuite.Core pull` + commit in the 
   1,000 newest first, outputs of the newest 50 in activity/<id>.log; reads vDeploy's older oldest-first file) and `Notifier` /
   `NotifyGroup` / `INotifySettings` / `INotifyEvent` (1.0.48: each group to any of Gotify, Discord, vShell - `NotifyTo` flags, stored
   "to:gotify,discord,vshell"; the older words still read). Tests: `vSuite.Server.Tests`.
+  `Backups.cs` (1.0.51, V: "add backups to the other web apps so after a reinstall I can import one"): the whole data folder as a plain
+  zip (secret.key, keys/, id_<app> in; logs, backups/, app.new, *.tmp/*.part/*.sock and the app's `Skip` out) + `vsuite-backup.json`;
+  daily 7 / manual 10, copied to `IBackupSettings.BackupCopyTo` (newest 7 there); `Restore` -> restore.zip, `ApplyPending(version)` at
+  start right after Paths.Init. vSuite.Web: `Parts/BackupsOptions.razor`, `BackupWeb.Map` (/backup/{type}/{name}). server-guide 4 and 8.
 - `vSuite.Web` (1.0.32-1.0.35, Razor class library on vSuite.Server): the server apps' pages - a vSuite window in a browser.
   - `HostsCard` (1.0.35): Options > General > Hosts in vDeploy, vPatch and vTrace - export the ticked hosts (a data: link, no endpoint)
     and import a file; the app gives `ImportAction` (per host not here yet) and optionally `ImportAll`. Icons added: upload, pc, server,

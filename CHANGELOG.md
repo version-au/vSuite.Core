@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.51
+
+- Backups for every server app: vSuite.Server `Backups` (the whole data folder as a zip, secret.key included - daily, by hand, copied to a folder of your choosing; restored at the next start) and vSuite.Web's Options › Backups page (`BackupsOptions`) and download (`BackupWeb.Map`).
+
 ## 1.0.50
 
 - scripts\sign.ps1 + sign.cmd: the Windows apps' builds sign the app, its installer and uninstaller with the Certum certificate (SimplySign Desktop connected); an upload needs it.
