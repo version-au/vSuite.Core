@@ -67,10 +67,7 @@ public sealed class Backups
     {
         string dir = Path.Combine(Folder, type);
         Directory.CreateDirectory(dir);
-        string stem = ServerApp.Lower + "_backup_v" + _version + "_" + DateTime.Now.ToString("yyyy.MM.dd_HH.mm.ss");
-        string name = stem + ".zip";
-        for (int n = 2; File.Exists(Path.Combine(dir, name)); n++) name = stem + "_" + n + ".zip";      // two in the same second
-        string zip = Path.Combine(dir, name);
+        string zip = NewName(dir, ServerApp.Lower + "_backup_v" + _version), name = Path.GetFileName(zip);
         Write(zip + ".part", _version, Skip, AddOwn);
         File.Move(zip + ".part", zip, true);
         int keep = type == "scheduled" ? 7 : 10;
@@ -79,6 +76,15 @@ public sealed class Backups
         Copy(zip);
         var f = new FileInfo(zip);
         return new Entry(name, type, f.Length, f.LastWriteTimeUtc, zip);
+    }
+
+    /// <summary>dir/&lt;stem&gt;_&lt;time&gt;.zip - with _2, _3 … when one was made in the same second.</summary>
+    static string NewName(string dir, string stem)
+    {
+        stem += "_" + DateTime.Now.ToString("yyyy.MM.dd_HH.mm.ss");
+        string path = Path.Combine(dir, stem + ".zip");
+        for (int n = 2; File.Exists(path); n++) path = Path.Combine(dir, stem + "_" + n + ".zip");
+        return path;
     }
 
     /// <summary>The whole data folder (less what's skipped) and the note, as a zip.</summary>
@@ -205,7 +211,7 @@ public sealed class Backups
         {
             string dir = Path.Combine(Folder, "manual");
             Directory.CreateDirectory(dir);
-            string keep = Path.Combine(dir, ServerApp.Lower + "_before_restore_" + DateTime.Now.ToString("yyyy.MM.dd_HH.mm.ss") + ".zip");
+            string keep = NewName(dir, ServerApp.Lower + "_before_restore");
             Write(keep, version, null, null);
 
             string root = Path.GetFullPath(Paths.Data);

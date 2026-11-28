@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.53
+
+- Backups: two backups (or a restore's "before restore" copy) in the same second no longer clash - the restore stopped.
+
 ## 1.0.52
 
 - Backups: an app's older backup (vMediarr's, without secret.key) is unpacked over what's there instead of replacing it, so the key stays.
